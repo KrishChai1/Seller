@@ -1907,10 +1907,16 @@ Best,
             st.header("💰 AI Price Optimizer")
             st.markdown("Find the perfect price point for maximum speed and value")
             
-            col1, col2 = st.columns([1, 1])
+            # Initialize variables at tab level
+            if 'price_optimizer_state' not in st.session_state:
+                st.session_state.price_optimizer_state = {
+                    'current_price': 750000,
+                    'optimal_price': None,
+                    'quick_sale_price': None,
+                    'premium_price': None
+                }
             
-            # Initialize current_price at the function level
-            current_price = 750000  # Default value
+            col1, col2 = st.columns([1, 1])
             
             with col1:
                 st.subheader("Property Details")
@@ -1931,43 +1937,50 @@ Best,
                     ["Needs Work", "Fair", "Good", "Excellent", "New/Renovated"]
                 )
                 
-                current_price = st.number_input("Your Asking Price", 100000, 5000000, 750000, 10000)
-                
-                # Initialize price variables
-                optimal_price = None
-                quick_sale_price = None
-                premium_price = None
+                # Update current price in session state
+                st.session_state.price_optimizer_state['current_price'] = st.number_input(
+                    "Your Asking Price", 
+                    100000, 
+                    5000000, 
+                    st.session_state.price_optimizer_state['current_price'], 
+                    10000
+                )
                 
                 if st.button("🤖 Optimize Price", type="primary"):
                     with st.spinner("Analyzing 500+ comparable sales..."):
                         time.sleep(2)
                         
-                        # Simulated AI pricing
-                        optimal_price = current_price * random.uniform(0.92, 1.08)
-                        quick_sale_price = optimal_price * 0.95
-                        premium_price = optimal_price * 1.05
+                        # Get current price from session state
+                        current = st.session_state.price_optimizer_state['current_price']
                         
-                        # Store in session state
-                        st.session_state.optimal_price = optimal_price
-                        st.session_state.quick_sale_price = quick_sale_price
-                        st.session_state.premium_price = premium_price
-                        st.session_state.current_price = current_price  # Store this too
+                        # Simulated AI pricing
+                        optimal = current * random.uniform(0.92, 1.08)
+                        quick = optimal * 0.95
+                        premium = optimal * 1.05
+                        
+                        # Store all results in session state
+                        st.session_state.price_optimizer_state['optimal_price'] = optimal
+                        st.session_state.price_optimizer_state['quick_sale_price'] = quick
+                        st.session_state.price_optimizer_state['premium_price'] = premium
                         
                         st.success("Price Analysis Complete!")
                 
             with col2:
                 st.subheader("AI Recommendations")
                 
-                # Use session state to persist results
-                if 'optimal_price' in st.session_state:
-                    optimal_price = st.session_state.optimal_price
-                    quick_sale_price = st.session_state.quick_sale_price
-                    premium_price = st.session_state.premium_price
-                    stored_current_price = st.session_state.get('current_price', current_price)
+                # Get values from session state
+                state = st.session_state.price_optimizer_state
+                
+                if state['optimal_price'] is not None:
+                    # Get all values from state
+                    optimal_price = state['optimal_price']
+                    quick_sale_price = state['quick_sale_price']
+                    premium_price = state['premium_price']
+                    current_price = state['current_price']
                     
                     # Price recommendations
                     st.metric("Optimal Price", f"${optimal_price:,.0f}", 
-                             f"{(optimal_price/stored_current_price - 1)*100:+.1f}% vs asking")
+                             f"{(optimal_price/current_price - 1)*100:+.1f}% vs asking")
                     
                     col_a, col_b = st.columns(2)
                     with col_a:
@@ -1992,19 +2005,21 @@ Best,
                     
                     # Pricing strategy
                     with st.expander("💡 Recommended Strategy"):
-                        st.write("""
-                        **Week 1-2**: List at $759,000 (optimal)
+                        st.write(f"""
+                        **Week 1-2**: List at ${optimal_price:,.0f} (optimal)
                         - Generate maximum interest
                         - Likely multiple offers
                         
-                        **Week 3-4**: If no offers, reduce to $749,000
+                        **Week 3-4**: If no offers, reduce to ${optimal_price * 0.98:,.0f}
                         - Still above quick-sale price
                         - Maintains negotiation room
                         
-                        **Week 5+**: Consider $739,000
+                        **Week 5+**: Consider ${quick_sale_price:,.0f}
                         - Quick sale territory
                         - Will move fast
                         """)
+                else:
+                    st.info("👈 Enter property details and click 'Optimize Price' to see recommendations")
         
         # Tab 2: Staging AI
         with tabs[1]:
