@@ -1930,6 +1930,11 @@ Best,
                 
                 current_price = st.number_input("Your Asking Price", 100000, 5000000, 750000, 10000)
                 
+                # Initialize price variables
+                optimal_price = None
+                quick_sale_price = None
+                premium_price = None
+                
                 if st.button("🤖 Optimize Price", type="primary"):
                     with st.spinner("Analyzing 500+ comparable sales..."):
                         time.sleep(2)
@@ -1939,12 +1944,22 @@ Best,
                         quick_sale_price = optimal_price * 0.95
                         premium_price = optimal_price * 1.05
                         
+                        # Store in session state
+                        st.session_state.optimal_price = optimal_price
+                        st.session_state.quick_sale_price = quick_sale_price
+                        st.session_state.premium_price = premium_price
+                        
                         st.success("Price Analysis Complete!")
                 
             with col2:
                 st.subheader("AI Recommendations")
                 
-                if 'optimal_price' in locals():
+                # Use session state to persist results
+                if 'optimal_price' in st.session_state:
+                    optimal_price = st.session_state.optimal_price
+                    quick_sale_price = st.session_state.quick_sale_price
+                    premium_price = st.session_state.premium_price
+                    
                     # Price recommendations
                     st.metric("Optimal Price", f"${optimal_price:,.0f}", 
                              f"{(optimal_price/current_price - 1)*100:+.1f}% vs asking")
@@ -2237,11 +2252,12 @@ Best,
                     
                     st.write("**Psychological Pricing:**")
                     
-                    if current_price := st.session_state.get('current_price', 750000):
-                        st.write(f"• Instead of ${current_price:,.0f}")
-                        st.write(f"• Price at ${current_price - 1000:,.0f}")
-                        st.write("• Feels significantly cheaper")
-                        st.write("• Increases click-through 23%")
+                    # Use a default price or get from input
+                    current_price = 750000  # Default value
+                    st.write(f"• Instead of ${current_price:,.0f}")
+                    st.write(f"• Price at ${current_price - 1000:,.0f}")
+                    st.write("• Feels significantly cheaper")
+                    st.write("• Increases click-through 23%")
                 
                 # Buyer objections
                 with st.expander("🚫 Common Objections & Solutions"):
