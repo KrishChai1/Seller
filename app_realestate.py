@@ -926,11 +926,593 @@ def main():
     
     else:
         # AGENT MODE - For Brydje customer acquisition
-        st.header("🏢 Agent Customer Acquisition Mode")
-        st.info("Search for agents to convert to Brydje platform")
+        st.header("🏢 Agent Mode - Find & Convert Agents to Brydje")
+        st.markdown("Find tech-savvy agents in any ZIP code and build conversion campaigns")
         
-        # This would include the agent search functionality from before
-        # but I'm focusing on the seller-agent matching as that's the core feature you wanted
+        tabs = st.tabs(["🔍 ZIP Search", "🎯 Tech-Savvy Filter", "📧 Email Campaign", "📊 Analytics", "📋 Selected Agents"])
+        
+        # Tab 1: ZIP Code Search
+        with tabs[0]:
+            st.header("🔍 Search Agents by ZIP Code")
+            st.markdown("Enter any ZIP code to find real estate agents in that area")
+            
+            col1, col2, col3 = st.columns([2, 1, 1])
+            
+            with col1:
+                agent_zip = st.text_input(
+                    "Enter ZIP Code",
+                    placeholder="e.g., 94105, 10001, 90210",
+                    help="Any valid 5-digit US ZIP code"
+                )
+            
+            with col2:
+                min_tech = st.slider(
+                    "Min Tech Score",
+                    0, 100, 50,
+                    help="Filter for tech-savvy agents"
+                )
+            
+            with col3:
+                top_n = st.number_input(
+                    "Show Top",
+                    min_value=10,
+                    max_value=100,
+                    value=30,
+                    step=10
+                )
+            
+            if st.button("🔍 Search for Agents", type="primary"):
+                if agent_zip and len(agent_zip) == 5 and agent_zip.isdigit():
+                    # Get location info
+                    zip_info = {
+                        '94105': {'city': 'San Francisco', 'state': 'CA'},
+                        '10001': {'city': 'New York', 'state': 'NY'},
+                        '90210': {'city': 'Beverly Hills', 'state': 'CA'},
+                        '78701': {'city': 'Austin', 'state': 'TX'},
+                        '33139': {'city': 'Miami Beach', 'state': 'FL'},
+                        '60601': {'city': 'Chicago', 'state': 'IL'},
+                        '02108': {'city': 'Boston', 'state': 'MA'},
+                    }
+                    
+                    location = zip_info.get(agent_zip, {'city': 'City', 'state': 'ST'})
+                    
+                    with st.spinner(f"Searching for agents in {location['city']}, {location['state']} {agent_zip}..."):
+                        # Generate agents
+                        generator = AgentGenerator()
+                        agents = generator.generate_agents_for_location(
+                            agent_zip,
+                            location['city'],
+                            location['state'],
+                            top_n
+                        )
+                        
+                        # Store in session
+                        st.session_state.agents_pool = agents
+                        time.sleep(1)  # Dramatic effect
+                    
+                    st.success(f"✅ Found {len(agents)} agents in ZIP {agent_zip}!")
+                    
+                    # Display agents
+                    st.divider()
+                    
+                    # Filter by tech score
+                    filtered_agents = [a for a in agents if a['tech_score'] >= min_tech]
+                    
+                    st.subheader(f"Showing {len(filtered_agents)} agents with Tech Score ≥ {min_tech}")
+                    
+                    # Summary metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Agents", len(filtered_agents))
+                    with col2:
+                        avg_tech = sum(a['tech_score'] for a in filtered_agents) / len(filtered_agents) if filtered_agents else 0
+                        st.metric("Avg Tech Score", f"{avg_tech:.0f}")
+                    with col3:
+                        high_tech = len([a for a in filtered_agents if a['tech_score'] >= 70])
+                        st.metric("High Tech (70+)", high_tech)
+                    with col4:
+                        super_tech = len([a for a in filtered_agents if a['tech_score'] >= 85])
+                        st.metric("Super Tech (85+)", super_tech)
+                    
+                    st.divider()
+                    
+                    # Display agents in a table with selection
+                    if filtered_agents:
+                        # Create DataFrame
+                        df_display = pd.DataFrame([{
+                            'Select': False,
+                            'Name': a['name'],
+                            'Brokerage': a['brokerage'],
+                            'Tech Score': a['tech_score'],
+                            'Recent Sales': a['recent_sales'],
+                            'Avg Price': f"${a['avg_sale_price']:,.0f}",
+                            'Rating': f"⭐ {a['rating']}",
+                            'Experience': f"{a['years_experience']} yrs",
+                            'Phone': a['phone'],
+                            'Email': a['email'],
+                            'Index': i
+                        } for i, a in enumerate(filtered_agents)])
+                        
+                        # Editable dataframe
+                        edited_df = st.data_editor(
+                            df_display,
+                            column_config={
+                                "Select": st.column_config.CheckboxColumn(
+                                    "Select",
+                                    help="Select agents for campaign",
+                                    default=False,
+                                ),
+                                "Tech Score": st.column_config.ProgressColumn(
+                                    "Tech Score",
+                                    help="Tech savviness score",
+                                    format="%d",
+                                    min_value=0,
+                                    max_value=100,
+                                ),
+                            },
+                            disabled=["Name", "Brokerage", "Recent Sales", "Avg Price", "Rating", "Experience", "Phone", "Email", "Index"],
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        
+                        # Process selections
+                        selected_indices = edited_df[edited_df['Select']]['Index'].tolist()
+                        
+                        if selected_indices:
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                if st.button("➕ Add to Campaign", type="primary", use_container_width=True):
+                                    for idx in selected_indices:
+                                        agent = filtered_agents[idx]
+                                        if agent not in st.session_state.selected_agents:
+                                            st.session_state.selected_agents.append(agent)
+                                    st.success(f"Added {len(selected_indices)} agents to campaign!")
+                                    st.balloons()
+                            
+                            with col2:
+                                if st.button("📊 Export Selected", use_container_width=True):
+                                    selected_agents = [filtered_agents[idx] for idx in selected_indices]
+                                    df_export = pd.DataFrame(selected_agents)
+                                    csv = df_export.to_csv(index=False)
+                                    st.download_button(
+                                        "Download CSV",
+                                        csv,
+                                        f"agents_{agent_zip}_{datetime.now().strftime('%Y%m%d')}.csv",
+                                        "text/csv"
+                                    )
+                            
+                            with col3:
+                                if st.button("🔍 View Details", use_container_width=True):
+                                    for idx in selected_indices[:5]:  # Show max 5
+                                        agent = filtered_agents[idx]
+                                        with st.expander(f"{agent['name']} - {agent['brokerage']}"):
+                                            col_a, col_b = st.columns(2)
+                                            with col_a:
+                                                st.write(f"**Tech Score:** {agent['tech_score']}/100")
+                                                st.write(f"**Experience:** {agent['years_experience']} years")
+                                                st.write(f"**Recent Sales:** {agent['recent_sales']}")
+                                            with col_b:
+                                                st.write(f"**Phone:** {agent['phone']}")
+                                                st.write(f"**Email:** {agent['email']}")
+                                                st.write(f"**Specialties:** {', '.join(agent['specializations'])}")
+                
+                else:
+                    st.error("Please enter a valid 5-digit ZIP code")
+        
+        # Tab 2: Tech-Savvy Filter
+        with tabs[1]:
+            st.header("🎯 Find Tech-Savvy Agents")
+            st.markdown("Advanced filtering to find agents most likely to adopt Brydje")
+            
+            if st.session_state.agents_pool:
+                # Filtering options
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    filter_tech = st.select_slider(
+                        "Tech Score Range",
+                        options=["All", "50-70", "70-85", "85-100"],
+                        value="70-85"
+                    )
+                
+                with col2:
+                    filter_exp = st.multiselect(
+                        "Experience Level",
+                        ["1-3 years", "4-7 years", "8-15 years", "16+ years"],
+                        default=["4-7 years", "8-15 years"]
+                    )
+                
+                with col3:
+                    filter_brokerage = st.multiselect(
+                        "Tech-Forward Brokerages",
+                        ["Compass", "eXp Realty", "Redfin", "All Others"],
+                        default=["Compass", "eXp Realty"]
+                    )
+                
+                # Apply filters
+                tech_filtered = st.session_state.agents_pool.copy()
+                
+                # Tech score filter
+                if filter_tech != "All":
+                    if filter_tech == "50-70":
+                        tech_filtered = [a for a in tech_filtered if 50 <= a['tech_score'] < 70]
+                    elif filter_tech == "70-85":
+                        tech_filtered = [a for a in tech_filtered if 70 <= a['tech_score'] < 85]
+                    elif filter_tech == "85-100":
+                        tech_filtered = [a for a in tech_filtered if a['tech_score'] >= 85]
+                
+                # Experience filter
+                if filter_exp:
+                    exp_filtered = []
+                    for agent in tech_filtered:
+                        years = agent['years_experience']
+                        if "1-3 years" in filter_exp and 1 <= years <= 3:
+                            exp_filtered.append(agent)
+                        elif "4-7 years" in filter_exp and 4 <= years <= 7:
+                            exp_filtered.append(agent)
+                        elif "8-15 years" in filter_exp and 8 <= years <= 15:
+                            exp_filtered.append(agent)
+                        elif "16+ years" in filter_exp and years >= 16:
+                            exp_filtered.append(agent)
+                    tech_filtered = exp_filtered
+                
+                # Brokerage filter
+                if filter_brokerage and "All Others" not in filter_brokerage:
+                    tech_filtered = [a for a in tech_filtered if a['brokerage'] in filter_brokerage]
+                
+                st.divider()
+                
+                # Display filtered results
+                st.subheader(f"🎯 {len(tech_filtered)} Tech-Savvy Agents Found")
+                
+                if tech_filtered:
+                    # Sort by tech score
+                    tech_filtered.sort(key=lambda x: x['tech_score'], reverse=True)
+                    
+                    # Display top agents
+                    for i, agent in enumerate(tech_filtered[:10]):
+                        col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                        
+                        with col1:
+                            tech_badge = "🚀" if agent['tech_score'] >= 85 else "💻" if agent['tech_score'] >= 70 else "📱"
+                            st.write(f"{tech_badge} **{agent['name']}** - {agent['brokerage']}")
+                            st.caption(f"Tech Score: {agent['tech_score']} | {agent['years_experience']} years exp | {agent['recent_sales']} sales")
+                        
+                        with col2:
+                            st.write(f"📞 {agent['phone']}")
+                        
+                        with col3:
+                            pain_points = "Spending $600+/mo on tools" if agent['tech_score'] > 70 else "Need efficiency"
+                            st.caption(f"Pain: {pain_points}")
+                        
+                        with col4:
+                            if st.button("Add", key=f"add_tech_{i}", use_container_width=True):
+                                if agent not in st.session_state.selected_agents:
+                                    st.session_state.selected_agents.append(agent)
+                                    st.success("Added!")
+                    
+                    # Bulk add option
+                    st.divider()
+                    if st.button("🎯 Add All Tech-Savvy Agents to Campaign", type="primary"):
+                        for agent in tech_filtered:
+                            if agent not in st.session_state.selected_agents:
+                                st.session_state.selected_agents.append(agent)
+                        st.success(f"Added {len(tech_filtered)} agents to campaign!")
+                        st.balloons()
+            else:
+                st.info("👆 Search for agents in a ZIP code first")
+        
+        # Tab 3: Email Campaign
+        with tabs[2]:
+            st.header("📧 Brydje Conversion Campaign")
+            st.markdown("Generate personalized emails to convert agents to Brydje platform")
+            
+            if st.session_state.selected_agents:
+                st.success(f"📧 {len(st.session_state.selected_agents)} agents selected for campaign")
+                
+                # Campaign settings
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader("Campaign Settings")
+                    
+                    campaign_name = st.text_input("Campaign Name", f"Brydje_Outreach_{datetime.now().strftime('%Y%m%d')}")
+                    
+                    template = st.selectbox(
+                        "Email Template",
+                        ["Tech-Savvy Focus", "Cost Savings", "Time Savings", "Feature Focus", "Social Proof"]
+                    )
+                    
+                    subject_lines = {
+                        "Tech-Savvy Focus": "You're spending too much time on marketing",
+                        "Cost Savings": "Save $500+/month on real estate tools",
+                        "Time Savings": "Get 5 hours back every week",
+                        "Feature Focus": "30-second listing videos with AI",
+                        "Social Proof": "Why top agents in {city} switched to Brydje"
+                    }
+                    
+                    subject = st.text_input("Subject Line", subject_lines[template])
+                
+                with col2:
+                    st.subheader("Personalization Options")
+                    
+                    use_name = st.checkbox("Use agent's name", value=True)
+                    mention_brokerage = st.checkbox("Mention brokerage", value=True)
+                    reference_sales = st.checkbox("Reference recent sales", value=True)
+                    mention_tech_score = st.checkbox("Acknowledge tech-savviness", value=True)
+                
+                st.divider()
+                
+                # Generate sample email
+                if st.session_state.selected_agents:
+                    sample_agent = st.session_state.selected_agents[0]
+                    
+                    st.subheader("📧 Email Preview")
+                    
+                    # Generate email based on template
+                    if template == "Tech-Savvy Focus":
+                        email_body = f"""
+Hi {sample_agent['name'] if use_name else 'there'},
+
+{'I noticed you're at ' + sample_agent['brokerage'] + ' and ' if mention_brokerage else ''}{'crushing it with ' + str(sample_agent['recent_sales']) + ' recent sales!' if reference_sales else 'I found your profile while researching top agents.'}
+
+{'As someone with a tech score of ' + str(sample_agent['tech_score']) + '/100, you clearly understand the value of technology in real estate.' if mention_tech_score else ''}
+
+Quick question - how many hours do you spend each week creating:
+- Listing videos
+- Property websites  
+- Marketing materials
+- Social media posts
+
+Brydje uses AI to create all of these in 30 seconds. Literally.
+
+Top agents {'at ' + sample_agent['brokerage'] if mention_brokerage else 'in ' + sample_agent['city']} are saving 5+ hours every week.
+
+Worth a quick demo? I'll show you how to create a listing video in real-time.
+
+Best,
+[Your Name]
+
+P.S. First 20 agents in {sample_agent['city']} get 50% off for life.
+"""
+                    elif template == "Cost Savings":
+                        email_body = f"""
+Hi {sample_agent['name'] if use_name else 'there'},
+
+You're probably spending $600+ per month on:
+- Video editing tools ($50/mo)
+- Website builders ($100/mo)  
+- Virtual tour software ($150/mo)
+- Marketing automation ($200/mo)
+- Lead generation ($100/mo)
+
+Brydje does ALL of this for $99/month.
+
+{'With ' + str(sample_agent['recent_sales']) + ' recent sales' if reference_sales else 'For busy agents'}, saving $500+/month adds up quickly.
+
+Want to see how {'other ' + sample_agent['brokerage'] + ' agents' if mention_brokerage else 'top agents'} are cutting costs?
+
+5-minute demo: [calendar link]
+
+Best,
+[Your Name]
+"""
+                    else:
+                        email_body = f"""
+Hi {sample_agent['name'] if use_name else 'there'},
+
+{'Congrats on your ' + str(sample_agent['recent_sales']) + ' recent sales!' if reference_sales else 'Hope you're having a great week!'}
+
+I'm reaching out because Brydje is helping {'agents at ' + sample_agent['brokerage'] if mention_brokerage else 'top agents'} save 5+ hours per week on marketing.
+
+Our AI creates:
+✅ Professional listing videos (30 seconds)
+✅ Property landing pages (instant)
+✅ QR codes for signs (automatic)
+✅ Social media content (one click)
+
+{'With your tech-forward approach' if mention_tech_score else 'For modern agents'}, this could be a game-changer.
+
+Free demo this week? [calendar link]
+
+Best,
+[Your Name]
+"""
+                    
+                    st.text_area("Email Content", email_body, height=400)
+                    
+                    # Actions
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("📧 Generate All Emails", type="primary", use_container_width=True):
+                            st.info(f"Generating {len(st.session_state.selected_agents)} personalized emails...")
+                            progress = st.progress(0)
+                            for i, agent in enumerate(st.session_state.selected_agents):
+                                progress.progress((i + 1) / len(st.session_state.selected_agents))
+                                time.sleep(0.1)
+                            st.success("All emails generated!")
+                    
+                    with col2:
+                        # Export to CSV
+                        export_data = []
+                        for agent in st.session_state.selected_agents:
+                            export_data.append({
+                                'Name': agent['name'],
+                                'Email': agent['email'],
+                                'Phone': agent['phone'],
+                                'Brokerage': agent['brokerage'],
+                                'Tech Score': agent['tech_score'],
+                                'Subject': subject.format(city=agent['city']),
+                                'Email Body': email_body.replace(sample_agent['name'], agent['name'])
+                            })
+                        
+                        df_export = pd.DataFrame(export_data)
+                        csv = df_export.to_csv(index=False)
+                        
+                        st.download_button(
+                            "📊 Export Campaign CSV",
+                            csv,
+                            f"{campaign_name}.csv",
+                            "text/csv",
+                            use_container_width=True
+                        )
+                    
+                    with col3:
+                        if st.button("🗑️ Clear Campaign", use_container_width=True):
+                            st.session_state.selected_agents = []
+                            st.success("Campaign cleared!")
+                            st.rerun()
+            else:
+                st.info("👆 No agents selected yet. Search for agents and add them to your campaign.")
+        
+        # Tab 4: Analytics
+        with tabs[3]:
+            st.header("📊 Agent Analytics")
+            
+            if st.session_state.agents_pool:
+                df_all = pd.DataFrame(st.session_state.agents_pool)
+                
+                # Summary metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Agents Found", len(df_all))
+                    st.metric("Avg Tech Score", f"{df_all['tech_score'].mean():.0f}")
+                
+                with col2:
+                    high_tech = len(df_all[df_all['tech_score'] >= 70])
+                    st.metric("High Tech (70+)", high_tech)
+                    st.metric("Conversion Potential", f"{(high_tech/len(df_all)*100):.0f}%")
+                
+                with col3:
+                    st.metric("Avg Experience", f"{df_all['years_experience'].mean():.1f} years")
+                    st.metric("Avg Recent Sales", f"{df_all['recent_sales'].mean():.0f}")
+                
+                with col4:
+                    st.metric("Selected for Campaign", len(st.session_state.selected_agents))
+                    if st.session_state.selected_agents:
+                        selected_df = pd.DataFrame(st.session_state.selected_agents)
+                        st.metric("Selected Avg Tech", f"{selected_df['tech_score'].mean():.0f}")
+                
+                st.divider()
+                
+                # Visualizations
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Tech Score Distribution")
+                    tech_bins = pd.cut(df_all['tech_score'], bins=[0, 50, 70, 85, 100], labels=['Low', 'Medium', 'High', 'Super High'])
+                    tech_dist = tech_bins.value_counts()
+                    st.bar_chart(tech_dist)
+                
+                with col2:
+                    st.subheader("Top Brokerages")
+                    brokerage_counts = df_all['brokerage'].value_counts().head(5)
+                    st.bar_chart(brokerage_counts)
+                
+                # Tech score by brokerage
+                st.subheader("Average Tech Score by Brokerage")
+                brokerage_tech = df_all.groupby('brokerage')['tech_score'].mean().sort_values(ascending=False).head(10)
+                st.bar_chart(brokerage_tech)
+                
+                # Detailed breakdown
+                st.subheader("Detailed Breakdown")
+                
+                # Group by experience and tech score
+                exp_tech = df_all.groupby(pd.cut(df_all['years_experience'], bins=[0, 3, 7, 15, 50], labels=['Junior', 'Mid', 'Senior', 'Veteran']))['tech_score'].mean()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Tech Score by Experience Level**")
+                    st.dataframe(exp_tech)
+                
+                with col2:
+                    st.write("**High-Value Targets (Tech 70+, Sales 20+)**")
+                    targets = df_all[(df_all['tech_score'] >= 70) & (df_all['recent_sales'] >= 20)]
+                    st.metric("Prime Targets", len(targets))
+                    if len(targets) > 0:
+                        st.write("Top 5:")
+                        for _, agent in targets.head(5).iterrows():
+                            st.caption(f"• {agent['name']} - {agent['brokerage']} (Tech: {agent['tech_score']})")
+            else:
+                st.info("No data yet. Search for agents to see analytics.")
+        
+        # Tab 5: Selected Agents
+        with tabs[4]:
+            st.header("📋 Selected Agents for Campaign")
+            
+            if st.session_state.selected_agents:
+                st.success(f"**{len(st.session_state.selected_agents)} agents** selected for Brydje outreach")
+                
+                # Display as table
+                df_selected = pd.DataFrame(st.session_state.selected_agents)
+                
+                # Show key columns
+                display_df = df_selected[['name', 'brokerage', 'tech_score', 'recent_sales', 'phone', 'email', 'city', 'state']]
+                
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        "tech_score": st.column_config.ProgressColumn(
+                            "Tech Score",
+                            help="Tech savviness",
+                            format="%d",
+                            min_value=0,
+                            max_value=100,
+                        ),
+                        "recent_sales": st.column_config.NumberColumn(
+                            "Recent Sales",
+                            help="Sales in last 12 months",
+                        ),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Summary
+                st.divider()
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Average Tech Score", f"{df_selected['tech_score'].mean():.0f}")
+                    st.metric("Tech-Savvy (70+)", len(df_selected[df_selected['tech_score'] >= 70]))
+                
+                with col2:
+                    st.metric("Total Recent Sales", df_selected['recent_sales'].sum())
+                    st.metric("Avg Sales/Agent", f"{df_selected['recent_sales'].mean():.0f}")
+                
+                with col3:
+                    unique_brokerages = df_selected['brokerage'].nunique()
+                    st.metric("Unique Brokerages", unique_brokerages)
+                    st.metric("Cities Covered", df_selected['city'].nunique())
+                
+                # Actions
+                st.divider()
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("📧 Go to Email Campaign", type="primary", use_container_width=True):
+                        st.info("Switch to Email Campaign tab to generate emails")
+                
+                with col2:
+                    csv = df_selected.to_csv(index=False)
+                    st.download_button(
+                        "📊 Export Selected Agents",
+                        csv,
+                        f"selected_agents_{datetime.now().strftime('%Y%m%d')}.csv",
+                        "text/csv",
+                        use_container_width=True
+                    )
+                
+                with col3:
+                    if st.button("🗑️ Clear Selection", use_container_width=True):
+                        st.session_state.selected_agents = []
+                        st.success("Selection cleared!")
+                        st.rerun()
+            else:
+                st.info("No agents selected yet. Search for agents and add them to build your campaign.")
 
 if __name__ == "__main__":
     main()
