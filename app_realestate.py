@@ -667,99 +667,131 @@ def main():
                 current = st.session_state.swipe_index
                 progress = current / total if total > 0 else 0
                 
-                st.markdown(f"""
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {progress * 100}%"></div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.write(f"Agent {current + 1} of {total}")
+                # Progress indicator
+                progress_bar = st.progress(progress)
+                st.write(f"**Agent {current + 1} of {total}**")
                 
                 if current < total:
                     agent = st.session_state.current_matches[current]
                     
-                    # Agent Card (Tinder-style)
-                    col1, col2, col3 = st.columns([1, 2, 1])
+                    # Create three columns for layout
+                    col1, col2, col3 = st.columns([1, 3, 1])
                     
                     with col2:
-                        st.markdown(f"""
-                        <div class="tinder-card">
-                            <div class="match-score-badge">{agent['match_score']}%</div>
+                        # Agent Card Container
+                        card_container = st.container()
+                        
+                        with card_container:
+                            # Match Score at top
+                            st.markdown(f"<h1 style='text-align: center; color: #667eea;'>{agent['match_score']}% Match</h1>", unsafe_allow_html=True)
                             
-                            <div class="agent-photo">
+                            # Agent Photo (Initials in circle)
+                            st.markdown(f"""
+                            <div style='width: 150px; height: 150px; margin: 20px auto; 
+                                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                        border-radius: 50%; display: flex; align-items: center; 
+                                        justify-content: center; color: white; font-size: 60px; font-weight: bold;'>
                                 {agent['first_name'][0]}{agent['last_name'][0]}
                             </div>
+                            """, unsafe_allow_html=True)
                             
-                            <h2 style="text-align: center;">{agent['name']}, {agent['years_experience']} years</h2>
-                            <h4 style="text-align: center; color: #667eea;">{agent['brokerage']}</h4>
+                            # Agent Name and Info
+                            st.markdown(f"### {agent['name']}")
+                            st.markdown(f"**{agent['brokerage']}** • {agent['years_experience']} years experience")
                             
-                            <hr>
+                            # Location and Stats
+                            col_stat1, col_stat2 = st.columns(2)
+                            with col_stat1:
+                                st.metric("Location", f"{agent['city']}, {agent['state']}")
+                                st.metric("Recent Sales", agent['recent_sales'])
+                            with col_stat2:
+                                st.metric("Rating", f"⭐ {agent['rating']}/5.0")
+                                st.metric("Avg Sale", f"${agent['avg_sale_price']:,.0f}")
                             
-                            <div style="text-align: center; margin: 20px 0;">
-                                <span class="feature-badge">📍 {agent['city']}, {agent['state']}</span>
-                                <span class="feature-badge">🏆 {agent['recent_sales']} recent sales</span>
-                                <span class="feature-badge">⭐ {agent['rating']}/5.0</span>
-                                <span class="feature-badge">💰 ${agent['avg_sale_price']:,.0f} avg</span>
-                            </div>
+                            # Specializations
+                            st.markdown("#### Specializes in:")
+                            specialization_tags = " • ".join(agent['specializations'])
+                            st.info(specialization_tags)
                             
-                            <div style="margin: 20px 0;">
-                                <strong>Specializes in:</strong><br>
-                                {', '.join(agent['specializations'])}
-                            </div>
+                            # Communication and Personality
+                            with st.expander("📋 Agent Details", expanded=True):
+                                col_detail1, col_detail2 = st.columns(2)
+                                with col_detail1:
+                                    st.write(f"**Communication:** {agent['communication_style'].title()}")
+                                    st.write(f"**Personality:** {agent['personality'].title()}")
+                                with col_detail2:
+                                    st.write(f"**Tech Score:** {agent['tech_score']}/100")
+                                    st.write(f"**Languages:** {', '.join(agent['languages'])}")
                             
-                            <div style="margin: 20px 0;">
-                                <strong>Communication:</strong> {agent['communication_style'].title()}<br>
-                                <strong>Personality:</strong> {agent['personality'].title()}<br>
-                                <strong>Tech Score:</strong> {agent['tech_score']}/100<br>
-                                <strong>Languages:</strong> {', '.join(agent['languages'])}
-                            </div>
-                            
-                            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                                <strong>Why we matched you:</strong><br>
-                                {'✅ Location match' if agent['match_breakdown']['location'] > 15 else ''}
-                                {'✅ Price range expertise' if agent['match_breakdown']['price_compatibility'] > 15 else ''}
-                                {'✅ Timeline fits' if agent['match_breakdown']['timeline'] > 10 else ''}
-                                {'✅ Communication style match' if agent['match_breakdown']['communication'] > 7 else ''}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                            # Match Explanation
+                            with st.expander("💡 Why We Matched You", expanded=True):
+                                match_reasons = []
+                                if agent['match_breakdown']['location'] > 15:
+                                    match_reasons.append("✅ **Location match** - Same area")
+                                if agent['match_breakdown']['price_compatibility'] > 15:
+                                    match_reasons.append("✅ **Price expertise** - Sells in your range")
+                                if agent['match_breakdown']['timeline'] > 10:
+                                    match_reasons.append("✅ **Timeline fits** - Available when you need")
+                                if agent['match_breakdown']['communication'] > 7:
+                                    match_reasons.append("✅ **Communication style** - Matches your preference")
+                                if agent['match_breakdown']['experience'] > 7:
+                                    match_reasons.append("✅ **Experience level** - Right for your needs")
+                                
+                                for reason in match_reasons:
+                                    st.markdown(reason)
                         
                         # Swipe Buttons
+                        st.markdown("---")
                         col_reject, col_super, col_like = st.columns(3)
                         
                         with col_reject:
-                            if st.button("❌", key=f"reject_{current}", help="Pass", use_container_width=True):
+                            if st.button("❌ Pass", key=f"reject_{current}", use_container_width=True, 
+                                       help="Not interested in this agent"):
                                 st.session_state.rejected_agents.append(agent)
                                 st.session_state.swipe_index += 1
                                 st.rerun()
                         
                         with col_super:
-                            if st.button("⭐", key=f"super_{current}", help="Super Like!", use_container_width=True):
+                            if st.button("⭐ Super Like", key=f"super_{current}", use_container_width=True,
+                                       type="primary", help="This agent is perfect!"):
                                 agent['super_liked'] = True
                                 st.session_state.liked_agents.insert(0, agent)
                                 st.session_state.swipe_index += 1
+                                st.balloons()
                                 st.success(f"⭐ Super Liked {agent['name']}!")
-                                time.sleep(1)
+                                time.sleep(1.5)
                                 st.rerun()
                         
                         with col_like:
-                            if st.button("💚", key=f"like_{current}", help="Like", use_container_width=True):
+                            if st.button("💚 Like", key=f"like_{current}", use_container_width=True,
+                                       help="Interested in this agent"):
                                 st.session_state.liked_agents.append(agent)
                                 st.session_state.swipe_index += 1
                                 st.success(f"💚 Liked {agent['name']}!")
                                 time.sleep(0.5)
                                 st.rerun()
+                        
+                        # Skip to end option
+                        if st.button("Skip to Results", key="skip_button"):
+                            st.session_state.swipe_index = total
+                            st.rerun()
                 
                 else:
                     # End of swiping
-                    st.markdown("""
-                    <div class="perfect-match">
-                        <h1>🎉 You've reviewed all agents!</h1>
-                        <h3>Check your matches in the next tab</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.balloons()
+                    st.success("# 🎉 You've reviewed all agents!")
+                    st.info("### Check your matches in the 'Your Matches' tab")
                     
-                    if st.button("View My Matches"):
+                    # Summary
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Reviewed", total)
+                    with col2:
+                        st.metric("Liked", len(st.session_state.liked_agents))
+                    with col3:
+                        st.metric("Passed", len(st.session_state.rejected_agents))
+                    
+                    if st.button("View My Matches", type="primary", use_container_width=True):
                         st.session_state.selected_tab = 2
                         st.rerun()
         
