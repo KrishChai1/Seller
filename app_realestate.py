@@ -454,8 +454,8 @@ class AgentGenerator:
 
 # ================== MAIN APPLICATION ==================
 def main():
-    st.title("🏡 Brydje - Smart Agent Matching Platform")
-    st.markdown("**Find your perfect real estate agent** • **AI-powered matching** • **Swipe to connect**")
+    st.title("🏡 Brydje - Complete Real Estate Platform")
+    st.markdown("**Smart Matching** • **AI-Powered Sales** • **Faster Closings**")
     
     # Sidebar
     with st.sidebar:
@@ -463,7 +463,10 @@ def main():
         
         mode = st.radio(
             "Choose your role:",
-            ["🏠 I'm Selling (Find an Agent)", "🏢 I'm an Agent (Find Clients)"],
+            ["🏠 I'm Selling (Find an Agent)", 
+             "🏢 I'm an Agent (Find Clients)",
+             "📨 Agent Inbox (Review Leads)",
+             "🚀 Speed-to-Sell Tools"],
             index=0
         )
         
@@ -479,7 +482,7 @@ def main():
             
             **It's like Tinder for real estate!**
             """)
-        else:
+        elif mode == "🏢 I'm an Agent (Find Clients)":
             st.info("""
             **For Agents:**
             1. Search ZIP codes
@@ -487,14 +490,43 @@ def main():
             3. Build email campaigns
             4. Convert to Brydje platform
             """)
+        elif mode == "📨 Agent Inbox (Review Leads)":
+            st.info("""
+            **Agent Lead Management:**
+            1. Review seller matches
+            2. Accept/Reject leads
+            3. Manage your pipeline
+            4. Track conversions
+            
+            **Tinder for agents too!**
+            """)
+        else:
+            st.info("""
+            **Speed-to-Sell Tools:**
+            1. AI pricing optimizer
+            2. Staging recommendations
+            3. Marketing timeline
+            4. Buyer psychology insights
+            
+            **Sell 50% faster!**
+            """)
         
         st.divider()
         
         # Stats
-        if st.session_state.liked_agents:
-            st.success(f"💚 {len(st.session_state.liked_agents)} Liked Agents")
-        if st.session_state.rejected_agents:
-            st.error(f"❌ {len(st.session_state.rejected_agents)} Passed")
+        if mode == "🏠 I'm Selling (Find an Agent)":
+            if st.session_state.liked_agents:
+                st.success(f"💚 {len(st.session_state.liked_agents)} Liked Agents")
+            if st.session_state.rejected_agents:
+                st.error(f"❌ {len(st.session_state.rejected_agents)} Passed")
+        elif mode == "📨 Agent Inbox (Review Leads)":
+            if 'accepted_sellers' not in st.session_state:
+                st.session_state.accepted_sellers = []
+            if 'rejected_sellers' not in st.session_state:
+                st.session_state.rejected_sellers = []
+            
+            st.metric("Accepted Leads", len(st.session_state.accepted_sellers))
+            st.metric("Rejected Leads", len(st.session_state.rejected_sellers))
     
     if mode == "🏠 I'm Selling (Find an Agent)":
         # SELLER MODE - The Core Feature!
@@ -1528,6 +1560,808 @@ Best,
                         st.rerun()
             else:
                 st.info("No agents selected yet. Search for agents and add them to build your campaign.")
+    
+    elif mode == "📨 Agent Inbox (Review Leads)":
+        # AGENT INBOX - Agents review and accept/reject seller leads
+        st.header("📨 Agent Inbox - Review Seller Leads")
+        st.markdown("**Swipe through seller leads** • **Accept high-value clients** • **Build your pipeline**")
+        
+        # Initialize session states
+        if 'seller_leads' not in st.session_state:
+            st.session_state.seller_leads = []
+        if 'accepted_sellers' not in st.session_state:
+            st.session_state.accepted_sellers = []
+        if 'rejected_sellers' not in st.session_state:
+            st.session_state.rejected_sellers = []
+        if 'lead_index' not in st.session_state:
+            st.session_state.lead_index = 0
+        
+        tabs = st.tabs(["📬 New Leads", "✅ Accepted Clients", "📊 Pipeline Analytics", "💰 Commission Calculator"])
+        
+        # Tab 1: New Leads (Tinder-style for agents)
+        with tabs[0]:
+            st.header("📬 Review New Seller Leads")
+            
+            # Generate sample seller leads if none exist
+            if not st.session_state.seller_leads:
+                if st.button("🔄 Load New Seller Leads", type="primary"):
+                    # Generate realistic seller leads
+                    seller_leads = []
+                    
+                    names = ["John Smith", "Sarah Johnson", "Mike Chen", "Emily Davis", "Robert Wilson",
+                            "Jennifer Martinez", "David Brown", "Lisa Anderson", "James Taylor", "Maria Garcia"]
+                    
+                    for i, name in enumerate(names):
+                        lead = {
+                            'id': i + 1,
+                            'name': name,
+                            'property_value': random.randint(200000, 2000000),
+                            'property_type': random.choice(['Single Family', 'Condo', 'Townhouse', 'Luxury Home']),
+                            'bedrooms': random.choice([2, 3, 4, 5]),
+                            'bathrooms': random.choice([1.5, 2, 2.5, 3, 3.5]),
+                            'timeline': random.choice(['ASAP', '1-3 months', '3-6 months']),
+                            'motivation': random.choice(['Relocating', 'Upgrading', 'Downsizing', 'Investment', 'Divorce']),
+                            'prequalified': random.choice([True, False]),
+                            'cash_buyer': random.choice([True, False]) if random.random() > 0.7 else False,
+                            'first_time': random.choice([True, False]),
+                            'lead_score': random.randint(60, 100),
+                            'commission_potential': 0,  # Will calculate
+                            'days_on_market_estimate': random.randint(15, 90),
+                            'motivated_seller': random.choice([True, False]),
+                            'flexible_price': random.choice([True, False]),
+                            'needs_help': random.choice(['Staging', 'Repairs', 'Pricing', 'Marketing', 'None']),
+                            'source': random.choice(['Brydje Match', 'Website', 'Referral', 'Open House']),
+                            'contacted': False,
+                            'notes': ''
+                        }
+                        # Calculate commission
+                        lead['commission_potential'] = lead['property_value'] * 0.03  # 3% commission
+                        
+                        seller_leads.append(lead)
+                    
+                    st.session_state.seller_leads = seller_leads
+                    st.session_state.lead_index = 0
+                    st.success(f"Loaded {len(seller_leads)} new seller leads!")
+                    st.balloons()
+            
+            if st.session_state.seller_leads:
+                # Progress
+                total = len(st.session_state.seller_leads)
+                current = st.session_state.lead_index
+                
+                if current < total:
+                    lead = st.session_state.seller_leads[current]
+                    
+                    # Progress bar
+                    progress = st.progress(current / total if total > 0 else 0)
+                    st.write(f"**Lead {current + 1} of {total}**")
+                    
+                    # Lead Card
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col2:
+                        # Lead Score Badge
+                        score_color = "🟢" if lead['lead_score'] >= 80 else "🟡" if lead['lead_score'] >= 60 else "🔴"
+                        st.markdown(f"# {score_color} Lead Score: {lead['lead_score']}/100")
+                        
+                        # Seller Info
+                        st.markdown(f"### {lead['name']}")
+                        
+                        # Property Details
+                        col_a, col_b = st.columns(2)
+                        
+                        with col_a:
+                            st.metric("Property Value", f"${lead['property_value']:,.0f}")
+                            st.metric("Commission Potential", f"${lead['commission_potential']:,.0f}")
+                            st.metric("Timeline", lead['timeline'])
+                        
+                        with col_b:
+                            st.metric("Type", lead['property_type'])
+                            st.metric("Size", f"{lead['bedrooms']}BR / {lead['bathrooms']}BA")
+                            st.metric("Est. Days on Market", lead['days_on_market_estimate'])
+                        
+                        # Seller Insights
+                        with st.expander("💡 Seller Insights", expanded=True):
+                            insights = []
+                            
+                            if lead['cash_buyer']:
+                                insights.append("💰 **Cash Buyer** - Quick closing possible")
+                            if lead['prequalified']:
+                                insights.append("✅ **Pre-qualified** - Serious buyer")
+                            if lead['first_time']:
+                                insights.append("🆕 **First-time seller** - Needs guidance")
+                            if lead['motivated_seller']:
+                                insights.append("🔥 **Motivated** - Ready to move fast")
+                            if lead['flexible_price']:
+                                insights.append("💵 **Flexible on price** - Room to negotiate")
+                            
+                            insights.append(f"📍 **Motivation**: {lead['motivation']}")
+                            insights.append(f"🛠️ **Needs help with**: {lead['needs_help']}")
+                            insights.append(f"📥 **Lead source**: {lead['source']}")
+                            
+                            for insight in insights:
+                                st.write(insight)
+                        
+                        # Why This Is a Good Lead
+                        with st.expander("🎯 Why Accept This Lead"):
+                            if lead['lead_score'] >= 80:
+                                st.success("**High-value lead!** Strong commission potential with motivated seller.")
+                            elif lead['lead_score'] >= 60:
+                                st.info("**Good opportunity.** Solid commission with reasonable timeline.")
+                            else:
+                                st.warning("**Requires work.** May need more nurturing but could be valuable.")
+                        
+                        # Action Buttons
+                        st.divider()
+                        
+                        col_reject, col_maybe, col_accept = st.columns(3)
+                        
+                        with col_reject:
+                            if st.button("❌ Pass", key=f"reject_lead_{current}", use_container_width=True):
+                                lead['status'] = 'rejected'
+                                st.session_state.rejected_sellers.append(lead)
+                                st.session_state.lead_index += 1
+                                st.rerun()
+                        
+                        with col_maybe:
+                            if st.button("🤔 Maybe Later", key=f"maybe_lead_{current}", use_container_width=True):
+                                # Move to end of queue
+                                st.session_state.seller_leads.append(lead)
+                                st.session_state.lead_index += 1
+                                st.info("Moved to end of queue")
+                                time.sleep(0.5)
+                                st.rerun()
+                        
+                        with col_accept:
+                            if st.button("✅ Accept", key=f"accept_lead_{current}", use_container_width=True, type="primary"):
+                                lead['status'] = 'accepted'
+                                lead['accepted_date'] = datetime.now()
+                                st.session_state.accepted_sellers.append(lead)
+                                st.session_state.lead_index += 1
+                                st.success(f"Accepted {lead['name']}! Commission potential: ${lead['commission_potential']:,.0f}")
+                                st.balloons()
+                                time.sleep(1)
+                                st.rerun()
+                else:
+                    st.success("You've reviewed all leads!")
+                    if st.button("Load More Leads"):
+                        st.session_state.seller_leads = []
+                        st.session_state.lead_index = 0
+                        st.rerun()
+        
+        # Tab 2: Accepted Clients
+        with tabs[1]:
+            st.header("✅ Your Accepted Clients")
+            
+            if st.session_state.accepted_sellers:
+                st.success(f"You have {len(st.session_state.accepted_sellers)} accepted clients")
+                
+                # Sort by commission potential
+                accepted_sorted = sorted(st.session_state.accepted_sellers, 
+                                        key=lambda x: x['commission_potential'], 
+                                        reverse=True)
+                
+                for client in accepted_sorted:
+                    with st.expander(f"{client['name']} - ${client['commission_potential']:,.0f} commission"):
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.write(f"**Property**: ${client['property_value']:,.0f}")
+                            st.write(f"**Type**: {client['property_type']}")
+                            st.write(f"**Size**: {client['bedrooms']}BR/{client['bathrooms']}BA")
+                        
+                        with col2:
+                            st.write(f"**Timeline**: {client['timeline']}")
+                            st.write(f"**Motivation**: {client['motivation']}")
+                            st.write(f"**Lead Score**: {client['lead_score']}/100")
+                        
+                        with col3:
+                            if st.button(f"📞 Contact", key=f"contact_client_{client['id']}"):
+                                st.info("Opening contact manager...")
+                            if st.button(f"📝 Add Notes", key=f"notes_client_{client['id']}"):
+                                client['notes'] = st.text_area("Notes", key=f"note_text_{client['id']}")
+                        
+                        # Next Steps
+                        st.write("**Recommended Next Steps:**")
+                        if client['timeline'] == 'ASAP':
+                            st.write("🔴 Schedule listing appointment immediately")
+                        if client['needs_help'] != 'None':
+                            st.write(f"🛠️ Address {client['needs_help']} needs")
+                        if client['first_time']:
+                            st.write("📚 Provide first-time seller guide")
+            else:
+                st.info("No accepted clients yet. Review leads in the 'New Leads' tab.")
+        
+        # Tab 3: Pipeline Analytics
+        with tabs[2]:
+            st.header("📊 Your Pipeline Analytics")
+            
+            total_accepted = len(st.session_state.accepted_sellers)
+            total_rejected = len(st.session_state.rejected_sellers)
+            total_reviewed = total_accepted + total_rejected
+            
+            if total_reviewed > 0:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Reviewed", total_reviewed)
+                    acceptance_rate = (total_accepted / total_reviewed * 100) if total_reviewed > 0 else 0
+                    st.metric("Acceptance Rate", f"{acceptance_rate:.0f}%")
+                
+                with col2:
+                    st.metric("Accepted", total_accepted)
+                    if st.session_state.accepted_sellers:
+                        avg_commission = sum(c['commission_potential'] for c in st.session_state.accepted_sellers) / len(st.session_state.accepted_sellers)
+                        st.metric("Avg Commission", f"${avg_commission:,.0f}")
+                
+                with col3:
+                    st.metric("Rejected", total_rejected)
+                    if st.session_state.accepted_sellers:
+                        total_pipeline = sum(c['commission_potential'] for c in st.session_state.accepted_sellers)
+                        st.metric("Pipeline Value", f"${total_pipeline:,.0f}")
+                
+                with col4:
+                    high_value = len([c for c in st.session_state.accepted_sellers if c['commission_potential'] > 30000])
+                    st.metric("High Value (>$30k)", high_value)
+                    urgent = len([c for c in st.session_state.accepted_sellers if c['timeline'] == 'ASAP'])
+                    st.metric("Urgent (ASAP)", urgent)
+                
+                # Charts
+                if st.session_state.accepted_sellers:
+                    st.divider()
+                    
+                    # Timeline distribution
+                    timeline_data = pd.DataFrame(st.session_state.accepted_sellers)['timeline'].value_counts()
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader("Timeline Distribution")
+                        st.bar_chart(timeline_data)
+                    
+                    with col2:
+                        st.subheader("Property Types")
+                        property_data = pd.DataFrame(st.session_state.accepted_sellers)['property_type'].value_counts()
+                        st.bar_chart(property_data)
+            else:
+                st.info("No data yet. Start reviewing leads to see analytics.")
+        
+        # Tab 4: Commission Calculator
+        with tabs[3]:
+            st.header("💰 Commission Calculator")
+            
+            if st.session_state.accepted_sellers:
+                st.subheader("Your Pipeline")
+                
+                # Calculate totals
+                total_value = sum(c['property_value'] for c in st.session_state.accepted_sellers)
+                total_commission = sum(c['commission_potential'] for c in st.session_state.accepted_sellers)
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Total Property Value", f"${total_value:,.0f}")
+                
+                with col2:
+                    st.metric("Total Commission (3%)", f"${total_commission:,.0f}")
+                
+                with col3:
+                    after_split = total_commission * 0.5  # Assuming 50/50 split
+                    st.metric("After Brokerage Split (50%)", f"${after_split:,.0f}")
+                
+                # Detailed breakdown
+                st.divider()
+                st.subheader("Commission Breakdown by Client")
+                
+                df_commission = pd.DataFrame(st.session_state.accepted_sellers)[
+                    ['name', 'property_value', 'commission_potential', 'timeline']
+                ]
+                df_commission.columns = ['Client', 'Property Value', 'Commission (3%)', 'Timeline']
+                
+                st.dataframe(
+                    df_commission,
+                    column_config={
+                        "Property Value": st.column_config.NumberColumn(
+                            "Property Value",
+                            format="$%d",
+                        ),
+                        "Commission (3%)": st.column_config.NumberColumn(
+                            "Commission (3%)",
+                            format="$%d",
+                        ),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Projection
+                st.divider()
+                st.subheader("Monthly Projection")
+                
+                asap_commission = sum(c['commission_potential'] for c in st.session_state.accepted_sellers if c['timeline'] == 'ASAP')
+                month_3_commission = sum(c['commission_potential'] for c in st.session_state.accepted_sellers if c['timeline'] == '1-3 months')
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("This Month (ASAP)", f"${asap_commission:,.0f}")
+                    st.metric("Next 3 Months", f"${month_3_commission:,.0f}")
+                
+                with col2:
+                    monthly_avg = total_commission / 6 if total_commission > 0 else 0
+                    st.metric("6-Month Average", f"${monthly_avg:,.0f}/mo")
+                    annual_projection = monthly_avg * 12
+                    st.metric("Annual Projection", f"${annual_projection:,.0f}")
+            else:
+                st.info("Accept some clients to see commission calculations.")
+    
+    elif mode == "🚀 Speed-to-Sell Tools":
+        # SPEED-TO-SELL MODULE - AI-powered tools to sell houses faster
+        st.header("🚀 Speed-to-Sell Intelligence Suite")
+        st.markdown("**AI-powered tools** to sell your property **50% faster** than market average")
+        
+        tabs = st.tabs(["💰 Price Optimizer", "🎨 Staging AI", "📅 Timeline Planner", "🧠 Buyer Psychology", "📊 Market Timing"])
+        
+        # Tab 1: Price Optimizer
+        with tabs[0]:
+            st.header("💰 AI Price Optimizer")
+            st.markdown("Find the perfect price point for maximum speed and value")
+            
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.subheader("Property Details")
+                
+                address = st.text_input("Property Address", "123 Main St, San Francisco, CA 94105")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    bedrooms = st.selectbox("Bedrooms", [1, 2, 3, 4, 5, 6])
+                    bathrooms = st.selectbox("Bathrooms", [1, 1.5, 2, 2.5, 3, 3.5, 4])
+                
+                with col_b:
+                    sqft = st.number_input("Square Feet", 500, 10000, 2000, 100)
+                    lot_size = st.number_input("Lot Size (sqft)", 0, 50000, 5000, 500)
+                
+                condition = st.select_slider(
+                    "Condition",
+                    ["Needs Work", "Fair", "Good", "Excellent", "New/Renovated"]
+                )
+                
+                current_price = st.number_input("Your Asking Price", 100000, 5000000, 750000, 10000)
+                
+                if st.button("🤖 Optimize Price", type="primary"):
+                    with st.spinner("Analyzing 500+ comparable sales..."):
+                        time.sleep(2)
+                        
+                        # Simulated AI pricing
+                        optimal_price = current_price * random.uniform(0.92, 1.08)
+                        quick_sale_price = optimal_price * 0.95
+                        premium_price = optimal_price * 1.05
+                        
+                        st.success("Price Analysis Complete!")
+                
+            with col2:
+                st.subheader("AI Recommendations")
+                
+                if 'optimal_price' in locals():
+                    # Price recommendations
+                    st.metric("Optimal Price", f"${optimal_price:,.0f}", 
+                             f"{(optimal_price/current_price - 1)*100:+.1f}% vs asking")
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.metric("Quick Sale (7 days)", f"${quick_sale_price:,.0f}")
+                    with col_b:
+                        st.metric("Premium (30+ days)", f"${premium_price:,.0f}")
+                    
+                    # Market insights
+                    st.divider()
+                    st.write("**Market Insights:**")
+                    
+                    insights = [
+                        "📈 Properties priced 3-5% below market sell 65% faster",
+                        "🏘️ Your neighborhood average: 21 days on market",
+                        "💹 Market trending: +2.3% this month",
+                        "🎯 Sweet spot: $740k-760k for multiple offers",
+                        "⚠️ Overpriced risk: 45+ days if > $780k"
+                    ]
+                    
+                    for insight in insights:
+                        st.write(insight)
+                    
+                    # Pricing strategy
+                    with st.expander("💡 Recommended Strategy"):
+                        st.write("""
+                        **Week 1-2**: List at $759,000 (optimal)
+                        - Generate maximum interest
+                        - Likely multiple offers
+                        
+                        **Week 3-4**: If no offers, reduce to $749,000
+                        - Still above quick-sale price
+                        - Maintains negotiation room
+                        
+                        **Week 5+**: Consider $739,000
+                        - Quick sale territory
+                        - Will move fast
+                        """)
+        
+        # Tab 2: Staging AI
+        with tabs[1]:
+            st.header("🎨 AI Staging Advisor")
+            st.markdown("Personalized staging recommendations based on buyer psychology")
+            
+            # Room selector
+            room = st.selectbox(
+                "Select Room to Stage",
+                ["Living Room", "Kitchen", "Master Bedroom", "Bathroom", "Dining Room", "Entryway", "Backyard"]
+            )
+            
+            target_buyer = st.selectbox(
+                "Target Buyer Profile",
+                ["Young Professionals", "Growing Family", "Empty Nesters", "Investors", "Luxury Buyers"]
+            )
+            
+            budget = st.slider("Staging Budget", 500, 10000, 2500, 500)
+            
+            if st.button("🎨 Get Staging Plan", type="primary"):
+                with st.spinner("Analyzing buyer preferences..."):
+                    time.sleep(1.5)
+                
+                st.success(f"Staging Plan for {room}")
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader("Must-Do Changes")
+                    
+                    # Generate recommendations based on room
+                    if room == "Living Room":
+                        musts = [
+                            "🛋️ **Remove 30% of furniture** - Create flow",
+                            "💡 **Add warm lighting** - 3000K bulbs",
+                            "🖼️ **Neutral artwork** - Remove family photos",
+                            "🪴 **Fresh greenery** - 2 large plants",
+                            "🎨 **Paint accent wall** - Soft gray/beige"
+                        ]
+                    elif room == "Kitchen":
+                        musts = [
+                            "🍴 **Clear countertops** - 90% clear space",
+                            "🍎 **Fresh fruit bowl** - Adds life",
+                            "☕ **Coffee station** - Shows lifestyle",
+                            "🧹 **Deep clean appliances** - Shine required",
+                            "💐 **Fresh flowers** - Center island"
+                        ]
+                    else:
+                        musts = [
+                            "🧹 **Deep clean everything**",
+                            "💡 **Maximize lighting**",
+                            "🎨 **Neutral colors**",
+                            "📦 **Declutter 50%**",
+                            "🪴 **Add fresh elements**"
+                        ]
+                    
+                    for must in musts:
+                        st.write(must)
+                
+                with col2:
+                    st.subheader("ROI Impact")
+                    
+                    # ROI metrics
+                    st.metric("Estimated Days Saved", f"{random.randint(7, 21)} days")
+                    st.metric("Value Add", f"${budget * random.uniform(3, 7):,.0f}")
+                    st.metric("Buyer Interest", f"+{random.randint(35, 65)}%")
+                    
+                    # Specific items to buy
+                    st.divider()
+                    st.write("**Shopping List:**")
+                    
+                    items = {
+                        "Throw pillows": "$89",
+                        "Area rug": "$299",
+                        "Wall art set": "$149",
+                        "Plant containers": "$120",
+                        "Lighting fixtures": "$340"
+                    }
+                    
+                    total = 0
+                    for item, price in items.items():
+                        st.write(f"• {item}: {price}")
+                        total += int(price.replace("$", ""))
+                    
+                    st.write(f"**Total: ${total}**")
+                
+                # Virtual staging preview
+                with st.expander("🖼️ Virtual Staging Preview"):
+                    st.info("Virtual staging preview would show here with AI-generated room visualization")
+                    st.write("Before → After comparison images")
+        
+        # Tab 3: Timeline Planner
+        with tabs[2]:
+            st.header("📅 Speed-to-Sell Timeline")
+            st.markdown("Day-by-day action plan to sell faster")
+            
+            sale_timeline = st.selectbox(
+                "Desired Sale Timeline",
+                ["7 Days (Urgent)", "14 Days (Fast)", "30 Days (Standard)", "45 Days (Relaxed)"]
+            )
+            
+            market_condition = st.radio(
+                "Current Market",
+                ["Hot (Seller's)", "Balanced", "Cool (Buyer's)"],
+                horizontal=True
+            )
+            
+            if st.button("📅 Generate Timeline", type="primary"):
+                st.success(f"Your {sale_timeline} Action Plan")
+                
+                # Generate timeline based on selection
+                if "7 Days" in sale_timeline:
+                    timeline_items = [
+                        ("Day 1", "🏠 Professional photos + 3D tour", "Critical"),
+                        ("Day 1", "💰 Price 3-5% below market", "Critical"),
+                        ("Day 2", "📱 List on MLS + Zillow + Social", "Critical"),
+                        ("Day 2-3", "📧 Email blast to agent network", "Important"),
+                        ("Day 4-5", "🏡 Open house (Fri evening)", "Critical"),
+                        ("Day 6", "🏡 Open house (Saturday)", "Critical"),
+                        ("Day 7", "📝 Review offers, negotiate", "Critical")
+                    ]
+                elif "14 Days" in sale_timeline:
+                    timeline_items = [
+                        ("Day 1-2", "🎨 Complete staging", "Important"),
+                        ("Day 3", "🏠 Professional photos", "Critical"),
+                        ("Day 4", "📱 List on all platforms", "Critical"),
+                        ("Day 5-7", "🎯 Targeted social media ads", "Important"),
+                        ("Day 8-9", "🏡 First open house weekend", "Critical"),
+                        ("Day 10-12", "📞 Agent showings", "Important"),
+                        ("Day 13-14", "📝 Offer review and negotiation", "Critical")
+                    ]
+                else:
+                    timeline_items = [
+                        ("Week 1", "🎨 Staging and repairs", "Important"),
+                        ("Week 1", "🏠 Photos and marketing prep", "Critical"),
+                        ("Week 2", "📱 Launch listing", "Critical"),
+                        ("Week 2-3", "🏡 Open houses", "Critical"),
+                        ("Week 3-4", "📝 Review and negotiate", "Important")
+                    ]
+                
+                # Display timeline
+                for time, action, priority in timeline_items:
+                    col1, col2, col3 = st.columns([1, 3, 1])
+                    
+                    with col1:
+                        st.write(f"**{time}**")
+                    
+                    with col2:
+                        st.write(action)
+                    
+                    with col3:
+                        if priority == "Critical":
+                            st.error(priority)
+                        else:
+                            st.warning(priority)
+                
+                # Success factors
+                st.divider()
+                st.subheader("🎯 Critical Success Factors")
+                
+                factors = [
+                    "✅ Professional photography (homes with pro photos sell 32% faster)",
+                    "✅ Priced within 3% of market value",
+                    "✅ Listed on Thursday (best day statistically)",
+                    "✅ First weekend open house (captures 40% of buyers)",
+                    "✅ Respond to inquiries within 1 hour"
+                ]
+                
+                for factor in factors:
+                    st.write(factor)
+        
+        # Tab 4: Buyer Psychology
+        with tabs[3]:
+            st.header("🧠 Buyer Psychology Insights")
+            st.markdown("Understand what buyers really want")
+            
+            property_type = st.selectbox(
+                "Your Property Type",
+                ["Single Family", "Condo", "Townhouse", "Luxury Home"]
+            )
+            
+            price_range = st.select_slider(
+                "Price Range",
+                ["Under $500k", "$500k-$750k", "$750k-$1M", "$1M-$2M", "Over $2M"]
+            )
+            
+            if st.button("🧠 Analyze Buyer Mindset", type="primary"):
+                st.success("Buyer Psychology Profile Generated")
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader("🎯 Your Likely Buyers")
+                    
+                    # Generate buyer personas
+                    if "Under $500k" in price_range:
+                        personas = [
+                            "👫 **First-time buyers** (65%)",
+                            "👨‍👩‍👧 **Young families** (25%)",
+                            "💼 **Investors** (10%)"
+                        ]
+                        
+                        st.write("**What They Want:**")
+                        wants = [
+                            "• Move-in ready condition",
+                            "• Low maintenance",
+                            "• Good schools nearby",
+                            "• Safe neighborhood",
+                            "• Future value potential"
+                        ]
+                    else:
+                        personas = [
+                            "📈 **Move-up buyers** (45%)",
+                            "🏢 **Executives** (35%)",
+                            "🌎 **Relocating professionals** (20%)"
+                        ]
+                        
+                        wants = [
+                            "• Lifestyle upgrade",
+                            "• Home office space",
+                            "• Entertainment areas",
+                            "• Privacy and security",
+                            "• Quality finishes"
+                        ]
+                    
+                    for persona in personas:
+                        st.write(persona)
+                    
+                    st.divider()
+                    for want in wants:
+                        st.write(want)
+                
+                with col2:
+                    st.subheader("🎨 Emotional Triggers")
+                    
+                    st.write("**Words That Sell:**")
+                    
+                    power_words = [
+                        "✨ 'Turn-key' - Appeals to convenience",
+                        "🏡 'Sanctuary' - Emotional safety",
+                        "🎯 'Rare opportunity' - FOMO",
+                        "💎 'Pride of ownership' - Status",
+                        "🌟 'Entertainer's dream' - Lifestyle"
+                    ]
+                    
+                    for word in power_words:
+                        st.write(word)
+                    
+                    st.divider()
+                    
+                    st.write("**Psychological Pricing:**")
+                    
+                    if current_price := st.session_state.get('current_price', 750000):
+                        st.write(f"• Instead of ${current_price:,.0f}")
+                        st.write(f"• Price at ${current_price - 1000:,.0f}")
+                        st.write("• Feels significantly cheaper")
+                        st.write("• Increases click-through 23%")
+                
+                # Buyer objections
+                with st.expander("🚫 Common Objections & Solutions"):
+                    objections = {
+                        "Price too high": "Provide comparable sales data + highlight unique features",
+                        "Needs updates": "Offer credit or show potential with virtual staging",
+                        "Location concerns": "Emphasize positives - quiet, private, convenient",
+                        "Smaller than wanted": "Focus on efficient layout, outdoor space, storage",
+                        "Timing not right": "Offer flexible closing, rent-back options"
+                    }
+                    
+                    for objection, solution in objections.items():
+                        st.write(f"**{objection}**")
+                        st.info(solution)
+        
+        # Tab 5: Market Timing
+        with tabs[4]:
+            st.header("📊 Market Timing Intelligence")
+            st.markdown("When to list for maximum impact")
+            
+            # Best time to list
+            st.subheader("🗓️ Optimal Listing Calendar")
+            
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                month = st.selectbox(
+                    "Current Month",
+                    ["January", "February", "March", "April", "May", "June",
+                     "July", "August", "September", "October", "November", "December"]
+                )
+                
+                if st.button("📊 Analyze Timing", type="primary"):
+                    st.success("Market Timing Analysis")
+                    
+                    # Seasonal analysis
+                    seasonal_data = {
+                        "March": ("🟢 Excellent", "Spring market begins, high buyer activity"),
+                        "April": ("🟢 Excellent", "Peak spring market, maximum exposure"),
+                        "May": ("🟢 Excellent", "Families buying before summer"),
+                        "June": ("🟡 Good", "Still active but starting to slow"),
+                        "July": ("🟡 Good", "Summer slowdown begins"),
+                        "August": ("🟡 Good", "Back-to-school affects activity"),
+                        "September": ("🟢 Excellent", "Fall market surge"),
+                        "October": ("🟡 Good", "Solid activity before holidays"),
+                        "November": ("🔴 Challenging", "Holiday slowdown"),
+                        "December": ("🔴 Challenging", "Lowest activity, but serious buyers"),
+                        "January": ("🟡 Good", "New year brings new buyers"),
+                        "February": ("🟡 Good", "Building toward spring")
+                    }
+                    
+                    rating, description = seasonal_data.get(month, ("🟡 Good", "Average market conditions"))
+                    
+                    st.metric("Market Rating", rating)
+                    st.write(description)
+            
+            with col2:
+                st.write("**Best Days to List:**")
+                
+                best_days = [
+                    "📅 **Thursday** - 20% more views",
+                    "📅 **Friday** - Weekend shoppers",
+                    "❌ **Monday** - Lowest engagement",
+                    "❌ **Sunday** - Missed by algorithms"
+                ]
+                
+                for day in best_days:
+                    st.write(day)
+                
+                st.divider()
+                
+                st.write("**Optimal Timing:**")
+                st.info("""
+                🌅 **Morning listings** (8-10 AM)
+                - Catch commute browsers
+                - Fresh in daily alerts
+                - Agent tour planning time
+                """)
+            
+            # Market indicators
+            st.divider()
+            st.subheader("📈 Current Market Indicators")
+            
+            # Simulate market data
+            indicators = {
+                "Days on Market": (21, -3, "days"),
+                "Inventory Level": (2.3, -0.5, "months"),
+                "Price/SqFt": (487, +12, "$"),
+                "Mortgage Rates": (6.85, +0.15, "%"),
+                "Buyer Activity": (73, +5, "/100")
+            }
+            
+            cols = st.columns(len(indicators))
+            
+            for i, (indicator, (value, change, unit)) in enumerate(indicators.items()):
+                with cols[i]:
+                    st.metric(
+                        indicator,
+                        f"{value}{unit}",
+                        f"{change:+g}" if change else "0"
+                    )
+            
+            # Market recommendation
+            with st.expander("🎯 Personalized Recommendation"):
+                st.write(f"""
+                **Based on current conditions:**
+                
+                ✅ Market is favorable for sellers
+                ✅ List within next 2 weeks for best results
+                ✅ Price competitively - buyers have options
+                ✅ Emphasize move-in ready features
+                ⚠️ Watch interest rates - affecting affordability
+                
+                **Your Action Plan:**
+                1. Prepare property this week
+                2. Photos next Tuesday
+                3. List Thursday morning
+                4. Open house Saturday + Sunday
+                5. Review offers Monday evening
+                """)
 
 if __name__ == "__main__":
     main()
