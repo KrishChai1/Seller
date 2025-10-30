@@ -1,5 +1,5 @@
 streamlit==1.28.0
-pandas==2.0.3
+pandas
 scikit-learn
 beautifulsoup4==4.12.2
 requests==2.31.0
