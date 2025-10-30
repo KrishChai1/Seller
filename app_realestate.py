@@ -1909,6 +1909,9 @@ Best,
             
             col1, col2 = st.columns([1, 1])
             
+            # Initialize current_price at the function level
+            current_price = 750000  # Default value
+            
             with col1:
                 st.subheader("Property Details")
                 
@@ -1948,6 +1951,7 @@ Best,
                         st.session_state.optimal_price = optimal_price
                         st.session_state.quick_sale_price = quick_sale_price
                         st.session_state.premium_price = premium_price
+                        st.session_state.current_price = current_price  # Store this too
                         
                         st.success("Price Analysis Complete!")
                 
@@ -1959,10 +1963,11 @@ Best,
                     optimal_price = st.session_state.optimal_price
                     quick_sale_price = st.session_state.quick_sale_price
                     premium_price = st.session_state.premium_price
+                    stored_current_price = st.session_state.get('current_price', current_price)
                     
                     # Price recommendations
                     st.metric("Optimal Price", f"${optimal_price:,.0f}", 
-                             f"{(optimal_price/current_price - 1)*100:+.1f}% vs asking")
+                             f"{(optimal_price/stored_current_price - 1)*100:+.1f}% vs asking")
                     
                     col_a, col_b = st.columns(2)
                     with col_a:
