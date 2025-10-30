@@ -956,7 +956,7 @@ def main():
             else:
                 st.info("No data yet. Start swiping to see your analytics!")
     
-    else:
+    elif mode == "🏢 I'm an Agent (Find Clients)":
         # AGENT MODE - For Brydje customer acquisition
         st.header("🏢 Agent Mode - Find & Convert Agents to Brydje")
         st.markdown("Find tech-savvy agents in any ZIP code and build conversion campaigns")
