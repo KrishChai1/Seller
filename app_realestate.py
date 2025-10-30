@@ -1252,12 +1252,18 @@ def main():
                     
                     # Generate email based on template
                     if template == "Tech-Savvy Focus":
+                        name_part = sample_agent['name'] if use_name else 'there'
+                        brokerage_part = f"I noticed you're at {sample_agent['brokerage']} and " if mention_brokerage else ''
+                        sales_part = f"crushing it with {sample_agent['recent_sales']} recent sales!" if reference_sales else 'I found your profile while researching top agents.'
+                        tech_part = f"As someone with a tech score of {sample_agent['tech_score']}/100, you clearly understand the value of technology in real estate." if mention_tech_score else ''
+                        city_part = sample_agent['city']
+                        
                         email_body = f"""
-Hi {sample_agent['name'] if use_name else 'there'},
+Hi {name_part},
 
-{'I noticed you're at ' + sample_agent['brokerage'] + ' and ' if mention_brokerage else ''}{'crushing it with ' + str(sample_agent['recent_sales']) + ' recent sales!' if reference_sales else 'I found your profile while researching top agents.'}
+{brokerage_part}{sales_part}
 
-{'As someone with a tech score of ' + str(sample_agent['tech_score']) + '/100, you clearly understand the value of technology in real estate.' if mention_tech_score else ''}
+{tech_part}
 
 Quick question - how many hours do you spend each week creating:
 - Listing videos
@@ -1267,18 +1273,22 @@ Quick question - how many hours do you spend each week creating:
 
 Brydje uses AI to create all of these in 30 seconds. Literally.
 
-Top agents {'at ' + sample_agent['brokerage'] if mention_brokerage else 'in ' + sample_agent['city']} are saving 5+ hours every week.
+Top agents {'at ' + sample_agent['brokerage'] if mention_brokerage else 'in ' + city_part} are saving 5+ hours every week.
 
 Worth a quick demo? I'll show you how to create a listing video in real-time.
 
 Best,
 [Your Name]
 
-P.S. First 20 agents in {sample_agent['city']} get 50% off for life.
+P.S. First 20 agents in {city_part} get 50% off for life.
 """
                     elif template == "Cost Savings":
+                        name_part = sample_agent['name'] if use_name else 'there'
+                        sales_part = f"With {sample_agent['recent_sales']} recent sales" if reference_sales else 'For busy agents'
+                        brokerage_part = f"other {sample_agent['brokerage']} agents" if mention_brokerage else 'top agents'
+                        
                         email_body = f"""
-Hi {sample_agent['name'] if use_name else 'there'},
+Hi {name_part},
 
 You're probably spending $600+ per month on:
 - Video editing tools ($50/mo)
@@ -1289,9 +1299,9 @@ You're probably spending $600+ per month on:
 
 Brydje does ALL of this for $99/month.
 
-{'With ' + str(sample_agent['recent_sales']) + ' recent sales' if reference_sales else 'For busy agents'}, saving $500+/month adds up quickly.
+{sales_part}, saving $500+/month adds up quickly.
 
-Want to see how {'other ' + sample_agent['brokerage'] + ' agents' if mention_brokerage else 'top agents'} are cutting costs?
+Want to see how {brokerage_part} are cutting costs?
 
 5-minute demo: [calendar link]
 
@@ -1299,12 +1309,17 @@ Best,
 [Your Name]
 """
                     else:
+                        name_part = sample_agent['name'] if use_name else 'there'
+                        sales_part = f"Congrats on your {sample_agent['recent_sales']} recent sales!" if reference_sales else 'Hope you\'re having a great week!'
+                        brokerage_part = f"agents at {sample_agent['brokerage']}" if mention_brokerage else 'top agents'
+                        tech_part = 'With your tech-forward approach' if mention_tech_score else 'For modern agents'
+                        
                         email_body = f"""
-Hi {sample_agent['name'] if use_name else 'there'},
+Hi {name_part},
 
-{'Congrats on your ' + str(sample_agent['recent_sales']) + ' recent sales!' if reference_sales else 'Hope you're having a great week!'}
+{sales_part}
 
-I'm reaching out because Brydje is helping {'agents at ' + sample_agent['brokerage'] if mention_brokerage else 'top agents'} save 5+ hours per week on marketing.
+I'm reaching out because Brydje is helping {brokerage_part} save 5+ hours per week on marketing.
 
 Our AI creates:
 ✅ Professional listing videos (30 seconds)
@@ -1312,7 +1327,7 @@ Our AI creates:
 ✅ QR codes for signs (automatic)
 ✅ Social media content (one click)
 
-{'With your tech-forward approach' if mention_tech_score else 'For modern agents'}, this could be a game-changer.
+{tech_part}, this could be a game-changer.
 
 Free demo this week? [calendar link]
 
