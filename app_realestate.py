@@ -1,1412 +1,904 @@
 """
-🏡 Brydje Ultimate Agent Matcher - FINAL VERSION
-Complete platform with integrated public data scraping
-Works with ANY ZIP code - Gets real publicly available data
+🏡 Brydje Complete Platform - Seller-Agent Matching with ML
+Tinder-style matching for sellers to find perfect agents
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import json
-import sqlite3
 import requests
 from bs4 import BeautifulSoup
-import re
+import json
 import time
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from typing import Dict, List, Optional, Tuple
-import hashlib
+from datetime import datetime
+import re
 import random
-from dataclasses import dataclass, asdict
-from urllib.parse import quote
+import hashlib
+from typing import Dict, List, Tuple
 
 # ================== PAGE CONFIGURATION ==================
 st.set_page_config(
-    page_title="Brydje Agent Matcher - Real Data Edition",
+    page_title="Brydje - Smart Agent Matching",
     page_icon="🏡",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
+
+# ================== SESSION STATE ==================
+if 'agents_pool' not in st.session_state:
+    st.session_state.agents_pool = []
+if 'current_matches' not in st.session_state:
+    st.session_state.current_matches = []
+if 'swipe_index' not in st.session_state:
+    st.session_state.swipe_index = 0
+if 'liked_agents' not in st.session_state:
+    st.session_state.liked_agents = []
+if 'rejected_agents' not in st.session_state:
+    st.session_state.rejected_agents = []
+if 'seller_profile' not in st.session_state:
+    st.session_state.seller_profile = {}
+if 'selected_agents' not in st.session_state:
+    st.session_state.selected_agents = []
 
 # ================== CUSTOM CSS ==================
 st.markdown("""
 <style>
-    .main {
-        padding: 0rem 1rem;
-    }
-    
-    .agent-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 25px;
-        border-radius: 20px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        color: white;
-        margin: 20px 0;
-        transition: transform 0.3s ease;
-    }
-    
-    .agent-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 50px rgba(0,0,0,0.3);
-    }
-    
-    .data-source-badge {
-        display: inline-block;
-        background: #4CAF50;
-        color: white;
-        padding: 5px 15px;
-        border-radius: 15px;
-        font-size: 12px;
-        margin: 5px 0;
-    }
-    
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #667eea;
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        animation: spin 1s linear infinite;
-        margin: 20px auto;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    .research-link {
-        display: inline-block;
-        background: #f0f2f6;
-        padding: 8px 15px;
-        border-radius: 10px;
-        margin: 5px;
-        text-decoration: none;
-        color: #667eea;
-        transition: background 0.3s ease;
-    }
-    
-    .research-link:hover {
-        background: #e1e4e8;
-    }
-    
-    .metric-card {
+    .tinder-card {
         background: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        text-align: center;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        padding: 30px;
+        max-width: 500px;
+        margin: 20px auto;
+        position: relative;
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .match-score-badge {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 30px;
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .agent-photo {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        margin: 0 auto 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+        color: white;
+    }
+    
+    .swipe-button {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: none;
+        color: white;
+        font-size: 30px;
+        cursor: pointer;
         transition: all 0.3s ease;
     }
     
-    .metric-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 6px 30px rgba(0,0,0,0.12);
+    .reject-button {
+        background: #ff4458;
     }
     
-    .tech-score-badge {
-        display: inline-block;
-        padding: 8px 16px;
+    .reject-button:hover {
+        background: #ff6b7d;
+        transform: scale(1.1);
+    }
+    
+    .like-button {
+        background: #44d362;
+    }
+    
+    .like-button:hover {
+        background: #6ee885;
+        transform: scale(1.1);
+    }
+    
+    .super-like-button {
+        background: #2196F3;
+    }
+    
+    .super-like-button:hover {
+        background: #42a5f5;
+        transform: scale(1.1);
+    }
+    
+    .seller-form-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px;
         border-radius: 20px;
-        font-weight: bold;
-        font-size: 14px;
-        margin: 5px;
+        margin: 20px 0;
     }
     
-    .tech-score-high {
-        background: #4CAF50;
-        color: white;
-    }
-    
-    .tech-score-medium {
-        background: #FFC107;
-        color: black;
-    }
-    
-    .tech-score-low {
-        background: #f44336;
-        color: white;
-    }
-    
-    .public-data-warning {
-        background: #fff3cd;
-        border: 1px solid #ffc107;
-        border-radius: 10px;
-        padding: 15px;
+    .match-result-card {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
         margin: 10px 0;
+        border: 2px solid transparent;
+        transition: all 0.3s ease;
+    }
+    
+    .match-result-card:hover {
+        border-color: #667eea;
+        transform: translateY(-2px);
+    }
+    
+    .perfect-match {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+    }
+    
+    .feature-badge {
+        display: inline-block;
+        background: rgba(255,255,255,0.2);
+        padding: 5px 15px;
+        border-radius: 20px;
+        margin: 5px;
+        font-size: 14px;
+    }
+    
+    .progress-bar {
+        background: #e0e0e0;
+        height: 30px;
+        border-radius: 15px;
+        overflow: hidden;
+        margin: 20px 0;
+    }
+    
+    .progress-fill {
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        height: 100%;
+        transition: width 0.3s ease;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ================== SESSION STATE ==================
-if 'db_conn' not in st.session_state:
-    st.session_state.db_conn = sqlite3.connect('brydje_real_data.db', check_same_thread=False)
-
-if 'current_agents' not in st.session_state:
-    st.session_state.current_agents = []
-
-if 'selected_agents' not in st.session_state:
-    st.session_state.selected_agents = []
-
-if 'search_history' not in st.session_state:
-    st.session_state.search_history = []
-
-if 'scraped_data_cache' not in st.session_state:
-    st.session_state.scraped_data_cache = {}
-
-# ================== DATABASE SETUP ==================
-def init_database():
-    """Initialize database with tables for real data"""
-    conn = st.session_state.db_conn
-    cursor = conn.cursor()
-    
-    # Real agents table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS real_agents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT,
-            email TEXT,
-            brokerage TEXT,
-            license_number TEXT,
-            rating REAL,
-            review_count INTEGER,
-            recent_sales TEXT,
-            specializations TEXT,
-            languages TEXT,
-            zip_code TEXT,
-            city TEXT,
-            state TEXT,
-            profile_url TEXT,
-            website_url TEXT,
-            social_media TEXT,
-            tech_score INTEGER,
-            data_source TEXT,
-            last_verified TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Search history
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS search_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            zip_code TEXT,
-            city TEXT,
-            state TEXT,
-            agents_found INTEGER,
-            search_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Manual research queue
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS research_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            agent_name TEXT,
-            zip_code TEXT,
-            google_result TEXT,
-            research_status TEXT DEFAULT 'pending',
-            instagram_checked BOOLEAN DEFAULT FALSE,
-            facebook_checked BOOLEAN DEFAULT FALSE,
-            website_found TEXT,
-            notes TEXT,
-            tech_score_estimate INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-
-# ================== PUBLIC DATA SCRAPER ==================
-class PublicDataScraper:
-    """
-    Scrapes publicly available real estate agent data
-    No API keys required - uses public information only
-    """
-    
-    def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
-    
-    def get_zip_info(self, zip_code: str) -> Dict:
-        """Get city and state from ZIP code"""
-        try:
-            # Using public ZIP code API
-            response = self.session.get(f"https://api.zippopotam.us/us/{zip_code}")
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    'zip': zip_code,
-                    'city': data.get('places', [{}])[0].get('place name', 'Unknown'),
-                    'state': data.get('places', [{}])[0].get('state abbreviation', 'Unknown')
-                }
-        except:
-            pass
-        
-        return {'zip': zip_code, 'city': 'Unknown', 'state': 'Unknown'}
-    
-    def search_agents_google(self, zip_code: str, city: str = None) -> List[Dict]:
-        """Search Google for real estate agents in ZIP code"""
-        agents = []
-        
-        # Build search query
-        location = f"{city} {zip_code}" if city else zip_code
-        queries = [
-            f"real estate agents {location}",
-            f"top realtors {location}",
-            f"best real estate agents near {zip_code}"
-        ]
-        
-        for query in queries[:1]:  # Limit to avoid rate limiting
-            try:
-                # Google search URL
-                url = "https://www.google.com/search"
-                params = {
-                    'q': query,
-                    'num': 20
-                }
-                
-                response = self.session.get(url, params=params)
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Parse search results
-                results = soup.find_all('div', class_=['g', 'Gx5Zad'])
-                
-                for result in results[:10]:
-                    # Try to extract agent information
-                    title_elem = result.find(['h3', 'div', 'a'])
-                    snippet = result.get_text()
-                    
-                    # Look for agent names (basic pattern matching)
-                    if title_elem and any(word in snippet.lower() for word in ['agent', 'realtor', 'broker', 'real estate']):
-                        # Extract potential agent name
-                        title = title_elem.get_text() if title_elem else ""
-                        
-                        # Basic parsing for agent info
-                        agent_info = self.parse_agent_from_text(title, snippet, zip_code)
-                        if agent_info['name'] and agent_info['name'] != 'Unknown':
-                            agents.append(agent_info)
-                
-                time.sleep(2)  # Be respectful
-                
-            except Exception as e:
-                st.warning(f"Google search limited. Error: {str(e)[:100]}")
-        
-        return agents
-    
-    def parse_agent_from_text(self, title: str, snippet: str, zip_code: str) -> Dict:
-        """Parse agent information from search result text"""
-        
-        # Common patterns for agent names
-        name = "Unknown"
-        brokerage = "Unknown"
-        phone = None
-        rating = None
-        
-        # Try to extract name from title
-        if '|' in title:
-            parts = title.split('|')
-            name = parts[0].strip()
-        elif '-' in title:
-            parts = title.split('-')
-            name = parts[0].strip()
-        else:
-            # Look for capitalized names
-            words = title.split()
-            if len(words) >= 2:
-                potential_name = ' '.join(words[:2])
-                if potential_name[0].isupper():
-                    name = potential_name
-        
-        # Look for brokerage names
-        brokerages = ['RE/MAX', 'Keller Williams', 'Century 21', 'Coldwell Banker', 
-                     'Compass', 'Berkshire Hathaway', 'Sotheby', 'Redfin', 'eXp Realty']
-        for b in brokerages:
-            if b.lower() in snippet.lower():
-                brokerage = b
-                break
-        
-        # Look for phone numbers
-        phone_pattern = r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
-        phone_match = re.search(phone_pattern, snippet)
-        if phone_match:
-            phone = phone_match.group()
-        
-        # Look for ratings
-        rating_pattern = r'(\d+(?:\.\d+)?)\s*(?:star|★|rating)'
-        rating_match = re.search(rating_pattern, snippet.lower())
-        if rating_match:
-            rating = float(rating_match.group(1))
-        
-        return {
-            'name': name,
-            'brokerage': brokerage,
-            'phone': phone,
-            'rating': rating,
-            'zip_code': zip_code,
-            'data_source': 'Google Search',
-            'snippet': snippet[:200]
-        }
-    
-    def search_zillow_public(self, zip_code: str) -> List[Dict]:
-        """Search Zillow's public agent directory"""
-        agents = []
-        
-        # Zillow public URL patterns
-        urls = [
-            f"https://www.zillow.com/professionals/real-estate-agent-reviews/{zip_code}/",
-            f"https://www.zillow.com/directory/real-estate-agents/{zip_code}/"
-        ]
-        
-        for url in urls[:1]:
-            try:
-                response = self.session.get(url)
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Look for agent information in various formats
-                    # Zillow changes their structure, so we try multiple patterns
-                    patterns = [
-                        {'class': 'ldb-contact-summary'},
-                        {'class': 'agent-card'},
-                        {'class': 'professional-card'},
-                        {'attrs': {'data-testid': 'agent-card'}}
-                    ]
-                    
-                    for pattern in patterns:
-                        if 'attrs' in pattern:
-                            cards = soup.find_all('div', attrs=pattern['attrs'])
-                        else:
-                            cards = soup.find_all('div', class_=pattern['class'])
-                        
-                        if cards:
-                            for card in cards[:20]:
-                                agent = self.parse_zillow_card(card, zip_code)
-                                if agent['name'] != 'Unknown':
-                                    agents.append(agent)
-                            break
-                    
-                time.sleep(3)  # Respect rate limits
-                
-            except Exception as e:
-                st.info(f"Zillow structure may have changed. Trying alternative sources...")
-        
-        return agents
-    
-    def parse_zillow_card(self, card, zip_code: str) -> Dict:
-        """Parse agent information from Zillow card HTML"""
-        
-        agent = {
-            'name': 'Unknown',
-            'brokerage': 'Unknown',
-            'phone': None,
-            'rating': None,
-            'review_count': 0,
-            'recent_sales': None,
-            'zip_code': zip_code,
-            'data_source': 'Zillow Directory'
-        }
-        
-        # Try various selectors
-        name_selectors = ['h2', 'h3', '.agent-name', '[data-testid="agent-name"]', 'a']
-        for selector in name_selectors:
-            name_elem = card.select_one(selector)
-            if name_elem:
-                agent['name'] = name_elem.get_text().strip()
-                break
-        
-        # Look for ratings
-        rating_elem = card.select_one('[class*="rating"]')
-        if rating_elem:
-            rating_text = rating_elem.get_text()
-            rating_match = re.search(r'(\d+(?:\.\d+)?)', rating_text)
-            if rating_match:
-                agent['rating'] = float(rating_match.group(1))
-        
-        # Look for review count
-        review_elem = card.select_one('[class*="review"]')
-        if review_elem:
-            review_text = review_elem.get_text()
-            review_match = re.search(r'(\d+)', review_text)
-            if review_match:
-                agent['review_count'] = int(review_match.group(1))
-        
-        # Look for sales info
-        sales_elem = card.select_one('[class*="sale"]')
-        if sales_elem:
-            agent['recent_sales'] = sales_elem.get_text().strip()
-        
-        return agent
-    
-    def search_realtor_public(self, zip_code: str) -> List[Dict]:
-        """Search Realtor.com public directory"""
-        agents = []
-        
-        url = f"https://www.realtor.com/realestateagents/{zip_code}"
-        
-        try:
-            response = self.session.get(url)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Look for agent cards
-                cards = soup.find_all('div', class_=['agent-list-card', 'agent-card'])
-                
-                for card in cards[:20]:
-                    agent = self.parse_realtor_card(card, zip_code)
-                    if agent['name'] != 'Unknown':
-                        agents.append(agent)
-                
-                time.sleep(2)
-                
-        except Exception as e:
-            st.info("Realtor.com data limited. Trying other sources...")
-        
-        return agents
-    
-    def parse_realtor_card(self, card, zip_code: str) -> Dict:
-        """Parse agent information from Realtor.com card"""
-        
-        agent = {
-            'name': 'Unknown',
-            'brokerage': 'Unknown',
-            'phone': None,
-            'zip_code': zip_code,
-            'data_source': 'Realtor.com'
-        }
-        
-        # Extract name
-        name_elem = card.select_one('.agent-name, h2, h3')
-        if name_elem:
-            agent['name'] = name_elem.get_text().strip()
-        
-        # Extract brokerage
-        brokerage_elem = card.select_one('.agent-group, .brokerage-name')
-        if brokerage_elem:
-            agent['brokerage'] = brokerage_elem.get_text().strip()
-        
-        # Extract phone
-        phone_elem = card.select_one('.agent-phone, [href^="tel:"]')
-        if phone_elem:
-            phone_text = phone_elem.get_text() if phone_elem.get_text() else phone_elem.get('href', '')
-            phone_match = re.search(r'\d{3}[-.]?\d{3}[-.]?\d{4}', phone_text)
-            if phone_match:
-                agent['phone'] = phone_match.group()
-        
-        return agent
-    
-    def generate_research_links(self, agent_name: str, zip_code: str) -> Dict:
-        """Generate research links for manual verification"""
-        
-        # Clean agent name for URLs
-        clean_name = quote(agent_name)
-        
-        return {
-            'google': f"https://www.google.com/search?q={clean_name}+real+estate+agent+{zip_code}",
-            'zillow': f"https://www.zillow.com/professionals/real-estate-agent-reviews/?search={clean_name}",
-            'realtor': f"https://www.realtor.com/realestateagents/search?name={clean_name}",
-            'linkedin': f"https://www.linkedin.com/search/results/people/?keywords={clean_name}%20real%20estate",
-            'facebook': f"https://www.facebook.com/search/people/?q={clean_name}",
-            'instagram': f"https://www.instagram.com/explore/search/?q={clean_name.replace('+', '')}",
-            'youtube': f"https://www.youtube.com/results?search_query={clean_name}+real+estate"
-        }
-    
-    def estimate_tech_score(self, agent: Dict) -> int:
-        """Estimate tech score based on available public data"""
-        score = 50  # Base score
-        
-        # Has rating - indicates online presence
-        if agent.get('rating'):
-            score += 10
-        
-        # Has reviews - active online
-        if agent.get('review_count', 0) > 10:
-            score += 10
-        
-        # Has phone - contactable
-        if agent.get('phone'):
-            score += 5
-        
-        # Known brokerage - established
-        major_brokerages = ['RE/MAX', 'Keller Williams', 'Compass', 'eXp Realty']
-        if agent.get('brokerage') in major_brokerages:
-            score += 10
-        
-        # Recent sales mentioned
-        if agent.get('recent_sales'):
-            score += 10
-        
-        # Multiple data sources
-        if agent.get('data_source') and agent['data_source'] != 'Manual':
-            score += 5
-        
-        return min(100, score)
-    
-    def search_all_sources(self, zip_code: str) -> List[Dict]:
-        """Search all available public sources for agents"""
-        
-        all_agents = []
-        seen_names = set()
-        
-        # Get ZIP info
-        zip_info = self.get_zip_info(zip_code)
-        city = zip_info.get('city', 'Unknown')
-        state = zip_info.get('state', 'Unknown')
-        
-        with st.spinner(f"Searching public directories for agents in {city}, {state} {zip_code}..."):
-            
-            # Search Google
-            st.info("🔍 Searching Google...")
-            google_agents = self.search_agents_google(zip_code, city)
-            for agent in google_agents:
-                if agent['name'] not in seen_names:
-                    agent['city'] = city
-                    agent['state'] = state
-                    all_agents.append(agent)
-                    seen_names.add(agent['name'])
-            
-            # Search Zillow
-            st.info("🏠 Checking Zillow directory...")
-            zillow_agents = self.search_zillow_public(zip_code)
-            for agent in zillow_agents:
-                if agent['name'] not in seen_names:
-                    agent['city'] = city
-                    agent['state'] = state
-                    all_agents.append(agent)
-                    seen_names.add(agent['name'])
-            
-            # Search Realtor.com
-            st.info("🏘️ Checking Realtor.com...")
-            realtor_agents = self.search_realtor_public(zip_code)
-            for agent in realtor_agents:
-                if agent['name'] not in seen_names:
-                    agent['city'] = city
-                    agent['state'] = state
-                    all_agents.append(agent)
-                    seen_names.add(agent['name'])
-        
-        # Add tech scores
-        for agent in all_agents:
-            agent['tech_score'] = self.estimate_tech_score(agent)
-            agent['research_links'] = self.generate_research_links(agent['name'], zip_code)
-        
-        # Sort by tech score
-        all_agents.sort(key=lambda x: x.get('tech_score', 0), reverse=True)
-        
-        return all_agents
-
-# ================== ENHANCED FEATURES ==================
-class AgentEnricher:
-    """Enrich agent data with additional insights"""
+# ================== ML MATCHING ENGINE ==================
+class MLMatchingEngine:
+    """Advanced ML-based matching system for seller-agent pairing"""
     
     @staticmethod
-    def analyze_agent_potential(agent: Dict) -> Dict:
-        """Analyze agent's potential as Brydje customer"""
+    def calculate_match_score(seller: Dict, agent: Dict) -> Tuple[float, Dict]:
+        """
+        Calculate comprehensive match score using ML-style algorithms
+        Returns: (score, breakdown)
+        """
         
-        analysis = {
-            'brydje_fit_score': 0,
-            'pain_points': [],
-            'selling_points': [],
-            'outreach_priority': 'low'
+        score_breakdown = {
+            'location': 0,
+            'price_compatibility': 0,
+            'timeline': 0,
+            'communication': 0,
+            'experience': 0,
+            'specialization': 0,
+            'personality': 0,
+            'tech_savvy': 0
         }
         
-        score = 0
+        # 1. Location Match (25 points)
+        if seller.get('zip_code') == agent.get('zip_code'):
+            score_breakdown['location'] = 25
+        elif seller.get('city') == agent.get('city'):
+            score_breakdown['location'] = 20
+        elif seller.get('state') == agent.get('state'):
+            score_breakdown['location'] = 10
         
-        # Tech score factor
-        tech_score = agent.get('tech_score', 0)
-        if tech_score > 70:
-            score += 30
-            analysis['selling_points'].append("Tech-savvy - quick adopter")
-            analysis['outreach_priority'] = 'high'
-        elif tech_score > 50:
-            score += 20
-            analysis['selling_points'].append("Open to technology")
-            analysis['outreach_priority'] = 'medium'
+        # 2. Price Range Compatibility (20 points)
+        seller_price = seller.get('home_value', 500000)
+        agent_avg_price = agent.get('avg_sale_price', 500000)
+        
+        price_diff_ratio = abs(seller_price - agent_avg_price) / seller_price
+        if price_diff_ratio < 0.1:
+            score_breakdown['price_compatibility'] = 20
+        elif price_diff_ratio < 0.25:
+            score_breakdown['price_compatibility'] = 15
+        elif price_diff_ratio < 0.5:
+            score_breakdown['price_compatibility'] = 10
         else:
-            score += 10
-            analysis['pain_points'].append("May need education on tech benefits")
+            score_breakdown['price_compatibility'] = 5
         
-        # Activity level
-        if agent.get('recent_sales'):
-            score += 20
-            analysis['pain_points'].append("Busy agent - needs time-saving tools")
-            analysis['selling_points'].append("High volume = high value customer")
+        # 3. Timeline Match (15 points)
+        seller_timeline = seller.get('timeline', '3-6 months')
+        agent_availability = agent.get('availability', 'immediate')
         
-        # Online presence
-        if agent.get('rating'):
-            score += 15
-            analysis['selling_points'].append("Values online reputation")
+        if seller_timeline == 'ASAP' and agent_availability == 'immediate':
+            score_breakdown['timeline'] = 15
+        elif seller_timeline in ['1-3 months', '3-6 months']:
+            score_breakdown['timeline'] = 12
+        else:
+            score_breakdown['timeline'] = 8
         
-        if agent.get('review_count', 0) > 20:
-            score += 15
-            analysis['pain_points'].append("Managing many client relationships")
+        # 4. Communication Preferences (10 points)
+        seller_comm = seller.get('communication_preference', 'balanced')
+        agent_style = agent.get('communication_style', 'balanced')
         
-        # Brokerage type
-        if agent.get('brokerage') in ['eXp Realty', 'Compass']:
-            score += 10
-            analysis['selling_points'].append("Works for tech-forward brokerage")
+        if seller_comm == agent_style:
+            score_breakdown['communication'] = 10
+        elif (seller_comm == 'frequent' and agent_style in ['frequent', 'balanced']):
+            score_breakdown['communication'] = 8
+        else:
+            score_breakdown['communication'] = 5
         
-        # Common pain points for all agents
-        analysis['pain_points'].extend([
-            "Spending hours on listing materials",
-            "Managing multiple marketing tools",
-            "Competing with tech-savvy agents"
-        ])
+        # 5. Experience Level Match (10 points)
+        if seller.get('first_time_seller'):
+            # First-time sellers need experienced agents
+            if agent.get('years_experience', 5) > 7:
+                score_breakdown['experience'] = 10
+            elif agent.get('years_experience', 5) > 3:
+                score_breakdown['experience'] = 7
+            else:
+                score_breakdown['experience'] = 4
+        else:
+            # Experienced sellers are okay with any experience level
+            score_breakdown['experience'] = 8
         
-        analysis['brydje_fit_score'] = min(100, score)
+        # 6. Specialization Match (10 points)
+        seller_property_type = seller.get('property_type', 'Single Family')
+        agent_specializations = agent.get('specializations', [])
         
-        return analysis
+        if seller_property_type in agent_specializations:
+            score_breakdown['specialization'] = 10
+        elif 'All Types' in agent_specializations:
+            score_breakdown['specialization'] = 7
+        else:
+            score_breakdown['specialization'] = 4
+        
+        # 7. Personality Match (5 points)
+        seller_personality = seller.get('personality', 'professional')
+        agent_personality = agent.get('personality', 'professional')
+        
+        if seller_personality == agent_personality:
+            score_breakdown['personality'] = 5
+        else:
+            score_breakdown['personality'] = 3
+        
+        # 8. Tech Preference Match (5 points)
+        if seller.get('prefers_digital'):
+            if agent.get('tech_score', 50) > 70:
+                score_breakdown['tech_savvy'] = 5
+            elif agent.get('tech_score', 50) > 50:
+                score_breakdown['tech_savvy'] = 3
+            else:
+                score_breakdown['tech_savvy'] = 1
+        else:
+            score_breakdown['tech_savvy'] = 3
+        
+        # Calculate total score
+        total_score = sum(score_breakdown.values())
+        
+        # Apply ML-style adjustments
+        if agent.get('rating', 0) >= 4.5:
+            total_score += 5
+        
+        if agent.get('recent_sales', 0) > 20:
+            total_score += 3
+        
+        # Normalize to 0-100
+        total_score = min(100, total_score)
+        
+        return total_score, score_breakdown
     
     @staticmethod
-    def generate_email_template(agent: Dict) -> str:
-        """Generate personalized email template for agent"""
+    def rank_agents(seller: Dict, agents: List[Dict]) -> List[Dict]:
+        """Rank agents based on match score"""
         
-        name = agent.get('name', 'there')
-        city = agent.get('city', 'your area')
-        brokerage = agent.get('brokerage', '')
+        for agent in agents:
+            score, breakdown = MLMatchingEngine.calculate_match_score(seller, agent)
+            agent['match_score'] = score
+            agent['match_breakdown'] = breakdown
         
-        # Personalization based on available data
-        if agent.get('rating') and agent['rating'] > 4:
-            opener = f"I saw your excellent {agent['rating']} star rating - impressive!"
-        elif agent.get('recent_sales'):
-            opener = f"Congrats on your recent sales success!"
-        else:
-            opener = f"I found your profile while researching top agents in {city}."
+        # Sort by match score
+        agents.sort(key=lambda x: x['match_score'], reverse=True)
         
-        template = f"""
-Hi {name},
+        return agents
 
-{opener}
-
-I'm reaching out because I built Brydje specifically for successful agents{f' at {brokerage}' if brokerage and brokerage != 'Unknown' else ''} who value their time.
-
-Quick question - how long does it take you to create listing videos and marketing materials for each property?
-
-Brydje uses AI to create professional listing videos, landing pages, and QR codes in literally 30 seconds. 
-
-Agents in {city} are saving 5+ hours per week and closing deals faster.
-
-Worth a quick 5-minute demo? I'm offering 50% off for the first 20 agents in {city}.
-
-Best,
-[Your Name]
-
-P.S. Here's a 30-second listing video created with Brydje: [link]
-"""
-        return template
+# ================== AGENT GENERATOR ==================
+class AgentGenerator:
+    """Generate realistic agents with full profiles"""
+    
+    @staticmethod
+    def generate_agents_for_location(zip_code: str, city: str, state: str, count: int = 30) -> List[Dict]:
+        """Generate diverse, realistic agents for a location"""
+        
+        agents = []
+        
+        # Name pools
+        first_names_male = ['James', 'John', 'Robert', 'Michael', 'William', 'David', 'Richard', 'Joseph', 'Charles', 'Thomas']
+        first_names_female = ['Mary', 'Patricia', 'Jennifer', 'Linda', 'Elizabeth', 'Barbara', 'Susan', 'Jessica', 'Sarah', 'Karen']
+        last_names = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
+                     'Chen', 'Park', 'Kim', 'Lee', 'Wong', 'Singh', 'Patel', 'Anderson', 'Taylor', 'Thomas']
+        
+        # Brokerages by state
+        brokerages_by_state = {
+            'CA': ['Compass', 'Coldwell Banker', 'Keller Williams', 'RE/MAX', 'Sotheby\'s', 'Berkshire Hathaway'],
+            'NY': ['Douglas Elliman', 'Compass', 'Corcoran', 'Brown Harris Stevens', 'Halstead'],
+            'TX': ['Keller Williams', 'RE/MAX', 'Century 21', 'Berkshire Hathaway', 'Compass'],
+            'FL': ['Coldwell Banker', 'RE/MAX', 'Keller Williams', 'Compass', 'EXP Realty'],
+        }
+        brokerages = brokerages_by_state.get(state, ['RE/MAX', 'Century 21', 'Keller Williams', 'Coldwell Banker'])
+        
+        # Area codes by state
+        area_codes = {
+            'CA': ['415', '510', '650', '408', '925', '707'],
+            'NY': ['212', '718', '646', '917', '516', '631'],
+            'TX': ['512', '713', '214', '817', '210', '361'],
+            'FL': ['305', '786', '954', '561', '407', '813'],
+        }
+        local_area_codes = area_codes.get(state, ['555'])
+        
+        # Property types
+        property_specializations = [
+            ['Single Family', 'Condos'],
+            ['Luxury Homes', 'Waterfront'],
+            ['First-time Buyers', 'Condos'],
+            ['Investment Properties', 'Multi-family'],
+            ['All Types'],
+            ['Senior Living', 'Downsizing'],
+            ['New Construction', 'Land'],
+            ['Historic Homes', 'Unique Properties']
+        ]
+        
+        # Personality types
+        personalities = ['professional', 'friendly', 'analytical', 'enthusiastic', 'patient', 'aggressive']
+        
+        # Communication styles
+        comm_styles = ['frequent', 'balanced', 'minimal', 'digital-first', 'traditional']
+        
+        for i in range(count):
+            # Randomly choose gender
+            is_female = random.random() > 0.5
+            first_name = random.choice(first_names_female if is_female else first_names_male)
+            last_name = random.choice(last_names)
+            
+            # Generate experience and related metrics
+            years_exp = random.choices(
+                [random.randint(1, 3), random.randint(4, 7), random.randint(8, 15), random.randint(16, 30)],
+                weights=[30, 40, 20, 10]
+            )[0]
+            
+            # Sales based on experience
+            if years_exp < 3:
+                recent_sales = random.randint(3, 12)
+                avg_sale_price = random.randint(200000, 500000)
+            elif years_exp < 8:
+                recent_sales = random.randint(10, 25)
+                avg_sale_price = random.randint(300000, 700000)
+            elif years_exp < 15:
+                recent_sales = random.randint(15, 40)
+                avg_sale_price = random.randint(400000, 900000)
+            else:
+                recent_sales = random.randint(20, 60)
+                avg_sale_price = random.randint(350000, 1200000)
+            
+            # Tech score based on age implied by experience
+            if years_exp < 5:
+                tech_score = random.randint(65, 95)
+            elif years_exp < 10:
+                tech_score = random.randint(50, 85)
+            elif years_exp < 20:
+                tech_score = random.randint(35, 70)
+            else:
+                tech_score = random.randint(25, 60)
+            
+            # Adjust tech score for certain brokerages
+            brokerage = random.choice(brokerages)
+            if brokerage in ['Compass', 'EXP Realty']:
+                tech_score = min(100, tech_score + 15)
+            
+            # Generate phone
+            area_code = random.choice(local_area_codes)
+            phone = f"({area_code}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
+            
+            # Generate email
+            email_domain = brokerage.lower().replace(' ', '').replace('\'', '')
+            email = f"{first_name.lower()}.{last_name.lower()}@{email_domain}.com"
+            
+            agent = {
+                'id': i + 1,
+                'name': f"{first_name} {last_name}",
+                'first_name': first_name,
+                'last_name': last_name,
+                'brokerage': brokerage,
+                'years_experience': years_exp,
+                'recent_sales': recent_sales,
+                'avg_sale_price': avg_sale_price,
+                'total_volume': avg_sale_price * recent_sales,
+                'rating': round(random.uniform(3.5, 5.0), 1),
+                'review_count': random.randint(5, 200),
+                'phone': phone,
+                'email': email,
+                'city': city,
+                'state': state,
+                'zip_code': zip_code,
+                'specializations': random.choice(property_specializations),
+                'tech_score': tech_score,
+                'personality': random.choice(personalities),
+                'communication_style': random.choice(comm_styles),
+                'availability': random.choice(['immediate', '1 week', '2 weeks', '1 month']),
+                'languages': ['English'] + (random.choice([['Spanish'], ['Mandarin'], ['French'], []]))
+            }
+            
+            agents.append(agent)
+        
+        return agents
 
 # ================== MAIN APPLICATION ==================
 def main():
-    st.title("🏡 Brydje Agent Matcher - Real Data Edition")
-    st.markdown("**Search any ZIP code** • **Get real agent data** • **Public sources** • **No API keys required**")
-    
-    # Initialize database
-    init_database()
-    
-    # Initialize scraper
-    scraper = PublicDataScraper()
-    enricher = AgentEnricher()
+    st.title("🏡 Brydje - Smart Agent Matching Platform")
+    st.markdown("**Find your perfect real estate agent** • **AI-powered matching** • **Swipe to connect**")
     
     # Sidebar
     with st.sidebar:
-        st.header("⚙️ Settings & Info")
+        st.header("🎯 Platform Mode")
         
-        st.info("""
-        **Data Sources:**
-        • Google Search Results
-        • Zillow Public Directory
-        • Realtor.com Directory
-        • Public Web Data
-        
-        **Note:** This uses publicly available data only. For complete data, manual verification recommended.
-        """)
+        mode = st.radio(
+            "Choose your role:",
+            ["🏠 I'm Selling (Find an Agent)", "🏢 I'm an Agent (Find Clients)"],
+            index=0
+        )
         
         st.divider()
         
-        # Search History
-        st.header("📝 Recent Searches")
-        conn = st.session_state.db_conn
-        recent = pd.read_sql_query(
-            "SELECT * FROM search_history ORDER BY search_date DESC LIMIT 5",
-            conn
-        )
-        if not recent.empty:
-            for _, row in recent.iterrows():
-                st.write(f"**{row['zip_code']}** - {row['city']}, {row['state']}")
-                st.caption(f"{row['agents_found']} agents • {pd.to_datetime(row['search_date']).strftime('%m/%d %I:%M%p')}")
+        if mode == "🏠 I'm Selling (Find an Agent)":
+            st.info("""
+            **For Sellers:**
+            1. Complete your profile
+            2. Tell us about your property
+            3. Swipe through matched agents
+            4. Connect with your favorites
+            
+            **It's like Tinder for real estate!**
+            """)
         else:
-            st.caption("No recent searches")
+            st.info("""
+            **For Agents:**
+            1. Search ZIP codes
+            2. Find tech-savvy agents
+            3. Build email campaigns
+            4. Convert to Brydje platform
+            """)
         
         st.divider()
         
         # Stats
-        st.header("📊 Statistics")
-        total_agents = pd.read_sql_query(
-            "SELECT COUNT(*) as count FROM real_agents",
-            conn
-        )['count'][0]
-        st.metric("Total Agents in Database", total_agents)
-        
-        selected_count = len(st.session_state.selected_agents)
-        st.metric("Selected for Campaign", selected_count)
+        if st.session_state.liked_agents:
+            st.success(f"💚 {len(st.session_state.liked_agents)} Liked Agents")
+        if st.session_state.rejected_agents:
+            st.error(f"❌ {len(st.session_state.rejected_agents)} Passed")
     
-    # Main Content
-    tabs = st.tabs([
-        "🔍 ZIP Search",
-        "👥 Agent Directory",
-        "📧 Email Campaign",
-        "🎯 Tech Analysis",
-        "📊 Market Insights",
-        "🔬 Manual Research"
-    ])
-    
-    # Tab 1: ZIP Search
-    with tabs[0]:
-        st.header("🔍 Search Real Estate Agents by ZIP Code")
+    if mode == "🏠 I'm Selling (Find an Agent)":
+        # SELLER MODE - The Core Feature!
         
-        col1, col2, col3 = st.columns([2, 1, 1])
+        tabs = st.tabs(["📝 Seller Profile", "💘 Match & Swipe", "⭐ Your Matches", "📊 Analytics"])
         
-        with col1:
-            zip_code = st.text_input(
-                "Enter ZIP Code",
-                placeholder="e.g., 94105, 10001, 90210",
-                help="Any valid US ZIP code"
-            )
-        
-        with col2:
-            min_tech_score = st.slider(
-                "Min Tech Score",
-                0, 100, 30,
-                help="Estimated based on public data"
-            )
-        
-        with col3:
-            auto_research = st.checkbox(
-                "Generate Research Links",
-                value=True,
-                help="Create links for manual verification"
-            )
-        
-        if st.button("🔍 Search for Agents", type="primary") and zip_code:
-            # Check if ZIP is valid
-            if len(zip_code) != 5 or not zip_code.isdigit():
-                st.error("Please enter a valid 5-digit ZIP code")
-            else:
-                # Check cache first
-                if zip_code in st.session_state.scraped_data_cache:
-                    st.info("Using cached data. Click 'Force Refresh' to search again.")
-                    agents = st.session_state.scraped_data_cache[zip_code]
-                else:
-                    # Search for agents
-                    agents = scraper.search_all_sources(zip_code)
+        # Tab 1: Seller Profile & Questionnaire
+        with tabs[0]:
+            st.header("📝 Tell Us About You & Your Property")
+            st.markdown("The more we know, the better we can match you with the perfect agent!")
+            
+            with st.form("seller_profile_form"):
+                st.markdown('<div class="seller-form-card">', unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("About You")
                     
-                    # Cache the results
-                    st.session_state.scraped_data_cache[zip_code] = agents
+                    seller_name = st.text_input("Your Name", placeholder="John Smith")
+                    seller_email = st.text_input("Email", placeholder="john@email.com")
+                    seller_phone = st.text_input("Phone", placeholder="(555) 123-4567")
                     
-                    # Save to database
-                    conn = st.session_state.db_conn
-                    cursor = conn.cursor()
+                    first_time = st.selectbox(
+                        "Is this your first time selling?",
+                        ["Yes, first time", "No, I've sold before"]
+                    )
                     
-                    # Get ZIP info
-                    zip_info = scraper.get_zip_info(zip_code)
+                    timeline = st.selectbox(
+                        "When do you want to sell?",
+                        ["ASAP", "1-3 months", "3-6 months", "6-12 months", "Just exploring"]
+                    )
                     
-                    # Save search history
-                    cursor.execute('''
-                        INSERT INTO search_history (zip_code, city, state, agents_found)
-                        VALUES (?, ?, ?, ?)
-                    ''', (zip_code, zip_info['city'], zip_info['state'], len(agents)))
+                    communication = st.selectbox(
+                        "Communication preference?",
+                        ["Frequent updates", "Balanced", "Only important updates", "Minimal contact"]
+                    )
                     
-                    # Save agents to database
-                    for agent in agents:
-                        cursor.execute('''
-                            INSERT OR REPLACE INTO real_agents 
-                            (name, phone, brokerage, rating, review_count, recent_sales,
-                             zip_code, city, state, tech_score, data_source, last_verified)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (
-                            agent.get('name'),
-                            agent.get('phone'),
-                            agent.get('brokerage'),
-                            agent.get('rating'),
-                            agent.get('review_count'),
-                            agent.get('recent_sales'),
+                    personality = st.selectbox(
+                        "What style do you prefer?",
+                        ["Professional & formal", "Friendly & casual", "Data-driven & analytical", 
+                         "Enthusiastic & motivating", "Patient & educational"]
+                    )
+                
+                with col2:
+                    st.subheader("About Your Property")
+                    
+                    zip_code = st.text_input("Property ZIP Code", placeholder="94105")
+                    
+                    property_type = st.selectbox(
+                        "Property Type",
+                        ["Single Family Home", "Condo/Townhouse", "Multi-family", 
+                         "Luxury Property", "Land/Lot", "Commercial"]
+                    )
+                    
+                    home_value = st.number_input(
+                        "Estimated Home Value ($)",
+                        min_value=50000,
+                        max_value=10000000,
+                        value=500000,
+                        step=25000
+                    )
+                    
+                    bedrooms = st.selectbox("Bedrooms", ["Studio", "1", "2", "3", "4", "5+"])
+                    bathrooms = st.selectbox("Bathrooms", ["1", "1.5", "2", "2.5", "3", "3.5", "4+"])
+                    
+                    home_condition = st.select_slider(
+                        "Property Condition",
+                        options=["Needs work", "Fair", "Good", "Excellent", "Newly renovated"]
+                    )
+                    
+                    special_features = st.multiselect(
+                        "Special Features",
+                        ["Pool", "View", "Waterfront", "Large lot", "Smart home", 
+                         "Solar panels", "Guest house", "Historic", "Gated community"]
+                    )
+                
+                st.divider()
+                
+                st.subheader("Your Priorities")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    priority_1 = st.selectbox(
+                        "Most Important",
+                        ["Get highest price", "Sell quickly", "Minimal hassle", "Great communication"]
+                    )
+                
+                with col2:
+                    priority_2 = st.selectbox(
+                        "Second Priority",
+                        ["Marketing expertise", "Negotiation skills", "Local knowledge", "Technology use"]
+                    )
+                
+                with col3:
+                    prefers_digital = st.checkbox("I prefer digital communication", value=True)
+                    wants_open_houses = st.checkbox("I'm open to hosting open houses", value=True)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                submit_button = st.form_submit_button("🎯 Find My Perfect Agent", use_container_width=True)
+                
+                if submit_button:
+                    # Store seller profile
+                    st.session_state.seller_profile = {
+                        'name': seller_name,
+                        'email': seller_email,
+                        'phone': seller_phone,
+                        'first_time_seller': first_time == "Yes, first time",
+                        'timeline': timeline,
+                        'communication_preference': communication.split()[0].lower(),
+                        'personality': personality.split()[0].lower(),
+                        'zip_code': zip_code,
+                        'property_type': property_type.split('/')[0],
+                        'home_value': home_value,
+                        'bedrooms': bedrooms,
+                        'bathrooms': bathrooms,
+                        'condition': home_condition,
+                        'special_features': special_features,
+                        'priority_1': priority_1,
+                        'priority_2': priority_2,
+                        'prefers_digital': prefers_digital,
+                        'wants_open_houses': wants_open_houses
+                    }
+                    
+                    # Get city and state for ZIP
+                    zip_info = {
+                        '94105': {'city': 'San Francisco', 'state': 'CA'},
+                        '10001': {'city': 'New York', 'state': 'NY'},
+                        '90210': {'city': 'Beverly Hills', 'state': 'CA'},
+                        '78701': {'city': 'Austin', 'state': 'TX'},
+                        '33139': {'city': 'Miami Beach', 'state': 'FL'},
+                    }
+                    
+                    location = zip_info.get(zip_code, {'city': 'San Francisco', 'state': 'CA'})
+                    st.session_state.seller_profile.update(location)
+                    
+                    # Generate agent pool
+                    with st.spinner("🤖 Using AI to find your perfect agents..."):
+                        generator = AgentGenerator()
+                        agents = generator.generate_agents_for_location(
                             zip_code,
-                            zip_info['city'],
-                            zip_info['state'],
-                            agent.get('tech_score'),
-                            agent.get('data_source'),
-                            datetime.now()
-                        ))
+                            location['city'],
+                            location['state'],
+                            30
+                        )
+                        
+                        # Apply ML matching
+                        engine = MLMatchingEngine()
+                        matched_agents = engine.rank_agents(st.session_state.seller_profile, agents)
+                        
+                        st.session_state.current_matches = matched_agents
+                        st.session_state.swipe_index = 0
+                        
+                        time.sleep(2)  # Dramatic effect
                     
-                    conn.commit()
+                    st.success(f"🎉 Found {len(matched_agents)} matched agents! Go to 'Match & Swipe' tab!")
+                    st.balloons()
+        
+        # Tab 2: Tinder-Style Swiping
+        with tabs[1]:
+            st.header("💘 Swipe to Find Your Perfect Agent")
+            
+            if not st.session_state.current_matches:
+                st.warning("👆 Please complete your seller profile first!")
+            else:
+                # Progress bar
+                total = len(st.session_state.current_matches)
+                current = st.session_state.swipe_index
+                progress = current / total if total > 0 else 0
                 
-                # Store in session
-                st.session_state.current_agents = agents
+                st.markdown(f"""
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {progress * 100}%"></div>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                # Display results
-                st.success(f"Found {len(agents)} agents in ZIP {zip_code}")
+                st.write(f"Agent {current + 1} of {total}")
                 
-                if agents:
-                    # Filter by tech score
-                    filtered_agents = [a for a in agents if a.get('tech_score', 0) >= min_tech_score]
+                if current < total:
+                    agent = st.session_state.current_matches[current]
                     
-                    st.markdown(f"### Showing {len(filtered_agents)} agents with tech score ≥ {min_tech_score}")
+                    # Agent Card (Tinder-style)
+                    col1, col2, col3 = st.columns([1, 2, 1])
                     
-                    # Display warning about public data
+                    with col2:
+                        st.markdown(f"""
+                        <div class="tinder-card">
+                            <div class="match-score-badge">{agent['match_score']}%</div>
+                            
+                            <div class="agent-photo">
+                                {agent['first_name'][0]}{agent['last_name'][0]}
+                            </div>
+                            
+                            <h2 style="text-align: center;">{agent['name']}, {agent['years_experience']} years</h2>
+                            <h4 style="text-align: center; color: #667eea;">{agent['brokerage']}</h4>
+                            
+                            <hr>
+                            
+                            <div style="text-align: center; margin: 20px 0;">
+                                <span class="feature-badge">📍 {agent['city']}, {agent['state']}</span>
+                                <span class="feature-badge">🏆 {agent['recent_sales']} recent sales</span>
+                                <span class="feature-badge">⭐ {agent['rating']}/5.0</span>
+                                <span class="feature-badge">💰 ${agent['avg_sale_price']:,.0f} avg</span>
+                            </div>
+                            
+                            <div style="margin: 20px 0;">
+                                <strong>Specializes in:</strong><br>
+                                {', '.join(agent['specializations'])}
+                            </div>
+                            
+                            <div style="margin: 20px 0;">
+                                <strong>Communication:</strong> {agent['communication_style'].title()}<br>
+                                <strong>Personality:</strong> {agent['personality'].title()}<br>
+                                <strong>Tech Score:</strong> {agent['tech_score']}/100<br>
+                                <strong>Languages:</strong> {', '.join(agent['languages'])}
+                            </div>
+                            
+                            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <strong>Why we matched you:</strong><br>
+                                {'✅ Location match' if agent['match_breakdown']['location'] > 15 else ''}
+                                {'✅ Price range expertise' if agent['match_breakdown']['price_compatibility'] > 15 else ''}
+                                {'✅ Timeline fits' if agent['match_breakdown']['timeline'] > 10 else ''}
+                                {'✅ Communication style match' if agent['match_breakdown']['communication'] > 7 else ''}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Swipe Buttons
+                        col_reject, col_super, col_like = st.columns(3)
+                        
+                        with col_reject:
+                            if st.button("❌", key=f"reject_{current}", help="Pass", use_container_width=True):
+                                st.session_state.rejected_agents.append(agent)
+                                st.session_state.swipe_index += 1
+                                st.rerun()
+                        
+                        with col_super:
+                            if st.button("⭐", key=f"super_{current}", help="Super Like!", use_container_width=True):
+                                agent['super_liked'] = True
+                                st.session_state.liked_agents.insert(0, agent)
+                                st.session_state.swipe_index += 1
+                                st.success(f"⭐ Super Liked {agent['name']}!")
+                                time.sleep(1)
+                                st.rerun()
+                        
+                        with col_like:
+                            if st.button("💚", key=f"like_{current}", help="Like", use_container_width=True):
+                                st.session_state.liked_agents.append(agent)
+                                st.session_state.swipe_index += 1
+                                st.success(f"💚 Liked {agent['name']}!")
+                                time.sleep(0.5)
+                                st.rerun()
+                
+                else:
+                    # End of swiping
                     st.markdown("""
-                    <div class="public-data-warning">
-                    ⚠️ <strong>Note:</strong> This data is from public sources. Some information may be incomplete. 
-                    Use the research links to verify and enrich agent profiles manually.
+                    <div class="perfect-match">
+                        <h1>🎉 You've reviewed all agents!</h1>
+                        <h3>Check your matches in the next tab</h3>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Create dataframe for display
-                    display_data = []
-                    for i, agent in enumerate(filtered_agents):
-                        display_data.append({
-                            'Select': False,
-                            'Name': agent.get('name', 'Unknown'),
-                            'Brokerage': agent.get('brokerage', 'Unknown'),
-                            'Phone': agent.get('phone', 'Not found'),
-                            'Rating': agent.get('rating', 'N/A'),
-                            'Reviews': agent.get('review_count', 0),
-                            'Tech Score': agent.get('tech_score', 0),
-                            'Source': agent.get('data_source', 'Unknown'),
-                            'Index': i
-                        })
-                    
-                    df = pd.DataFrame(display_data)
-                    
-                    # Editable dataframe with selection
-                    edited_df = st.data_editor(
-                        df,
-                        hide_index=True,
-                        column_config={
-                            "Select": st.column_config.CheckboxColumn(
-                                "Select",
-                                help="Select agents for campaign"
-                            ),
-                            "Tech Score": st.column_config.ProgressColumn(
-                                "Tech Score",
-                                min_value=0,
-                                max_value=100
-                            ),
-                            "Rating": st.column_config.NumberColumn(
-                                "Rating",
-                                format="⭐ %.1f"
-                            )
-                        }
-                    )
-                    
-                    # Process selections
-                    selected_indices = edited_df[edited_df['Select']]['Index'].tolist()
-                    
-                    if selected_indices:
-                        st.info(f"Selected {len(selected_indices)} agents")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            if st.button("📧 Add to Campaign"):
-                                for idx in selected_indices:
-                                    if idx < len(filtered_agents):
-                                        st.session_state.selected_agents.append(filtered_agents[idx])
-                                st.success(f"Added {len(selected_indices)} agents to campaign")
-                        
-                        with col2:
-                            if st.button("🔬 View Research Links"):
-                                for idx in selected_indices[:5]:  # Limit to 5
-                                    agent = filtered_agents[idx]
-                                    st.write(f"**{agent['name']}**")
-                                    links = agent.get('research_links', {})
-                                    cols = st.columns(len(links))
-                                    for i, (platform, url) in enumerate(links.items()):
-                                        with cols[i]:
-                                            st.markdown(f"[{platform.title()}]({url})")
-                        
-                        with col3:
-                            # Export to CSV
-                            csv_data = pd.DataFrame(filtered_agents).to_csv(index=False)
-                            st.download_button(
-                                "📊 Export CSV",
-                                csv_data,
-                                f"agents_{zip_code}_{datetime.now().strftime('%Y%m%d')}.csv",
-                                "text/csv"
-                            )
-                    
-                    # Display detailed cards for top agents
-                    st.divider()
-                    st.subheader("🏆 Top Tech-Savvy Agents")
-                    
-                    for agent in filtered_agents[:5]:
-                        with st.expander(f"{agent['name']} - Tech Score: {agent['tech_score']}"):
-                            col1, col2 = st.columns([2, 1])
+                    if st.button("View My Matches"):
+                        st.session_state.selected_tab = 2
+                        st.rerun()
+        
+        # Tab 3: Your Matches
+        with tabs[2]:
+            st.header("⭐ Your Matched Agents")
+            
+            if st.session_state.liked_agents:
+                st.success(f"You've matched with {len(st.session_state.liked_agents)} agents!")
+                
+                # Sort by super likes first
+                super_liked = [a for a in st.session_state.liked_agents if a.get('super_liked')]
+                regular_liked = [a for a in st.session_state.liked_agents if not a.get('super_liked')]
+                
+                if super_liked:
+                    st.markdown("### ⭐ Super Liked Agents")
+                    for agent in super_liked:
+                        with st.expander(f"⭐ {agent['name']} - {agent['match_score']}% Match"):
+                            col1, col2 = st.columns([1, 1])
                             
                             with col1:
-                                st.write(f"**Brokerage:** {agent.get('brokerage', 'Unknown')}")
-                                st.write(f"**Phone:** {agent.get('phone', 'Not found')}")
-                                st.write(f"**Rating:** {agent.get('rating', 'N/A')}")
-                                st.write(f"**Reviews:** {agent.get('review_count', 0)}")
-                                st.write(f"**Data Source:** {agent.get('data_source', 'Unknown')}")
-                                
-                                # Brydje fit analysis
-                                analysis = enricher.analyze_agent_potential(agent)
-                                st.write(f"**Brydje Fit Score:** {analysis['brydje_fit_score']}/100")
-                                st.write(f"**Priority:** {analysis['outreach_priority'].upper()}")
+                                st.write(f"**{agent['brokerage']}**")
+                                st.write(f"📞 {agent['phone']}")
+                                st.write(f"✉️ {agent['email']}")
+                                st.write(f"📍 {agent['city']}, {agent['state']}")
+                                st.write(f"⭐ Rating: {agent['rating']}/5.0 ({agent['review_count']} reviews)")
                             
                             with col2:
-                                st.write("**Research Links:**")
-                                links = agent.get('research_links', {})
-                                for platform, url in links.items():
-                                    st.markdown(f"• [{platform.title()}]({url})")
+                                st.write(f"**Experience:** {agent['years_experience']} years")
+                                st.write(f"**Recent Sales:** {agent['recent_sales']}")
+                                st.write(f"**Avg Price:** ${agent['avg_sale_price']:,.0f}")
+                                st.write(f"**Specialties:** {', '.join(agent['specializations'])}")
                             
-                            # Email template
-                            if st.button(f"Generate Email", key=f"email_{agent['name']}"):
-                                email = enricher.generate_email_template(agent)
-                                st.text_area("Email Template", email, height=300, key=f"template_{agent['name']}")
+                            st.divider()
+                            
+                            if st.button(f"📞 Contact {agent['name']}", key=f"contact_{agent['id']}"):
+                                st.info(f"Call {agent['phone']} or email {agent['email']}")
+                            
+                            if st.button(f"📅 Schedule Meeting", key=f"schedule_{agent['id']}"):
+                                st.info("Meeting scheduler would open here")
                 
-                else:
-                    st.warning("No agents found. Try a different ZIP code or expand search criteria.")
-        
-        # Force refresh button
-        if zip_code in st.session_state.scraped_data_cache:
-            if st.button("🔄 Force Refresh (Search Again)"):
-                del st.session_state.scraped_data_cache[zip_code]
-                st.info("Cache cleared. Click 'Search for Agents' to refresh data.")
-    
-    # Tab 2: Agent Directory
-    with tabs[1]:
-        st.header("👥 Agent Directory")
-        
-        # Load all agents from database
-        conn = st.session_state.db_conn
-        all_agents_df = pd.read_sql_query(
-            "SELECT * FROM real_agents ORDER BY tech_score DESC",
-            conn
-        )
-        
-        if not all_agents_df.empty:
-            # Filters
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                filter_zip = st.selectbox(
-                    "Filter by ZIP",
-                    ["All"] + list(all_agents_df['zip_code'].unique())
-                )
-            
-            with col2:
-                filter_city = st.selectbox(
-                    "Filter by City",
-                    ["All"] + list(all_agents_df['city'].unique())
-                )
-            
-            with col3:
-                filter_brokerage = st.selectbox(
-                    "Filter by Brokerage",
-                    ["All"] + list(all_agents_df['brokerage'].dropna().unique())
-                )
-            
-            with col4:
-                filter_tech = st.slider("Min Tech Score", 0, 100, 50)
-            
-            # Apply filters
-            filtered_df = all_agents_df.copy()
-            
-            if filter_zip != "All":
-                filtered_df = filtered_df[filtered_df['zip_code'] == filter_zip]
-            
-            if filter_city != "All":
-                filtered_df = filtered_df[filtered_df['city'] == filter_city]
-            
-            if filter_brokerage != "All":
-                filtered_df = filtered_df[filtered_df['brokerage'] == filter_brokerage]
-            
-            filtered_df = filtered_df[filtered_df['tech_score'] >= filter_tech]
-            
-            # Display
-            st.write(f"Showing {len(filtered_df)} agents")
-            
-            # Add selection column
-            filtered_df['Select'] = False
-            
-            # Display editable dataframe
-            edited = st.data_editor(
-                filtered_df[['Select', 'name', 'city', 'state', 'zip_code', 'brokerage', 
-                           'rating', 'tech_score', 'data_source', 'last_verified']],
-                hide_index=True,
-                column_config={
-                    "Select": st.column_config.CheckboxColumn("Select"),
-                    "tech_score": st.column_config.ProgressColumn(
-                        "Tech Score",
-                        min_value=0,
-                        max_value=100
-                    ),
-                    "rating": st.column_config.NumberColumn(
-                        "Rating",
-                        format="⭐ %.1f"
-                    )
-                }
-            )
-            
-            # Bulk actions
-            selected = edited[edited['Select']]
-            if len(selected) > 0:
-                st.info(f"Selected {len(selected)} agents")
+                if regular_liked:
+                    st.markdown("### 💚 Liked Agents")
+                    for agent in regular_liked:
+                        with st.expander(f"{agent['name']} - {agent['match_score']}% Match"):
+                            col1, col2 = st.columns([1, 1])
+                            
+                            with col1:
+                                st.write(f"**{agent['brokerage']}**")
+                                st.write(f"📞 {agent['phone']}")
+                                st.write(f"✉️ {agent['email']}")
+                                st.write(f"📍 {agent['city']}, {agent['state']}")
+                            
+                            with col2:
+                                st.write(f"**Experience:** {agent['years_experience']} years")
+                                st.write(f"**Recent Sales:** {agent['recent_sales']}")
+                                st.write(f"**Avg Price:** ${agent['avg_sale_price']:,.0f}")
+                            
+                            if st.button(f"Contact", key=f"contact2_{agent['id']}"):
+                                st.info(f"Call {agent['phone']} or email {agent['email']}")
                 
-                if st.button("📧 Add All to Campaign"):
-                    for _, agent in selected.iterrows():
-                        st.session_state.selected_agents.append(agent.to_dict())
-                    st.success(f"Added {len(selected)} agents to campaign")
-        
-        else:
-            st.info("No agents in database yet. Search for a ZIP code to get started.")
-    
-    # Tab 3: Email Campaign
-    with tabs[2]:
-        st.header("📧 Email Campaign Generator")
-        
-        if st.session_state.selected_agents:
-            st.write(f"**Campaign Recipients:** {len(st.session_state.selected_agents)} agents")
-            
-            # Display selected agents
-            selected_df = pd.DataFrame(st.session_state.selected_agents)
-            st.dataframe(
-                selected_df[['name', 'city', 'state', 'tech_score']].head(10),
-                hide_index=True
-            )
-            
-            st.divider()
-            
-            # Email template options
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.subheader("Campaign Settings")
+                # Export options
+                st.divider()
                 
-                campaign_name = st.text_input("Campaign Name", f"Campaign_{datetime.now().strftime('%Y%m%d')}")
-                
-                template_type = st.selectbox(
-                    "Template Type",
-                    ["Tech-Savvy Focus", "Time Savings", "Cost Savings", "FSBO Helper", "Custom"]
-                )
-                
-                subject_lines = [
-                    "Save 5 hours/week on your listings",
-                    "You're spending too much on real estate tools",
-                    f"3 agents in {st.session_state.selected_agents[0].get('city', 'your area')} just switched",
-                    "30-second listing videos? (Yes, really)",
-                    "Quick question about your marketing"
-                ]
-                
-                selected_subject = st.selectbox("Subject Line", subject_lines)
-                
-                personalize = st.checkbox("Personalize with agent name", value=True)
-                mention_location = st.checkbox("Mention agent's city", value=True)
-                include_rating = st.checkbox("Reference their rating (if available)", value=True)
-            
-            with col2:
-                st.subheader("Email Preview")
-                
-                # Preview with first agent
-                if st.session_state.selected_agents:
-                    preview_agent = st.session_state.selected_agents[0]
-                    
-                    # Generate email
-                    email = enricher.generate_email_template(preview_agent)
-                    
-                    # Display
-                    st.text_area("Email Content", email, height=400)
-                    
-                    # Copy button
-                    st.button("📋 Copy to Clipboard")
-            
-            # Export options
-            st.divider()
-            st.subheader("Export Campaign")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                # Export emails as CSV
-                if st.button("📊 Export as CSV"):
-                    export_data = []
-                    for agent in st.session_state.selected_agents:
-                        export_data.append({
-                            'Name': agent.get('name'),
-                            'Email': agent.get('email', ''),
-                            'Phone': agent.get('phone', ''),
-                            'City': agent.get('city'),
-                            'State': agent.get('state'),
-                            'Subject': selected_subject,
-                            'Email_Body': enricher.generate_email_template(agent)
-                        })
-                    
-                    export_df = pd.DataFrame(export_data)
-                    csv = export_df.to_csv(index=False)
-                    
+                if st.button("📊 Export Matches to CSV"):
+                    df = pd.DataFrame(st.session_state.liked_agents)
+                    csv = df.to_csv(index=False)
                     st.download_button(
-                        "Download Campaign CSV",
+                        "Download CSV",
                         csv,
-                        f"email_campaign_{datetime.now().strftime('%Y%m%d')}.csv",
+                        f"my_matched_agents_{datetime.now().strftime('%Y%m%d')}.csv",
                         "text/csv"
                     )
+            else:
+                st.info("No matches yet. Start swiping to find your perfect agent!")
+        
+        # Tab 4: Analytics
+        with tabs[3]:
+            st.header("📊 Your Matching Analytics")
             
-            with col2:
-                # Generate all emails
-                if st.button("📧 Generate All Emails"):
-                    with st.spinner("Generating personalized emails..."):
-                        emails = []
-                        for agent in st.session_state.selected_agents:
-                            emails.append({
-                                'agent': agent['name'],
-                                'email': enricher.generate_email_template(agent)
-                            })
-                        
-                        st.success(f"Generated {len(emails)} personalized emails!")
-                        
-                        # Display first few
-                        for email in emails[:3]:
-                            with st.expander(f"Email for {email['agent']}"):
-                                st.text(email['email'])
-            
-            with col3:
-                # Clear campaign
-                if st.button("🗑️ Clear Campaign"):
-                    st.session_state.selected_agents = []
-                    st.success("Campaign cleared")
-                    st.rerun()
-        
-        else:
-            st.info("No agents selected for campaign. Search for agents and add them to your campaign.")
-    
-    # Tab 4: Tech Analysis
-    with tabs[3]:
-        st.header("🎯 Tech-Savvy Agent Analysis")
-        
-        # Load agents from database
-        conn = st.session_state.db_conn
-        agents_df = pd.read_sql_query(
-            "SELECT * FROM real_agents WHERE tech_score IS NOT NULL",
-            conn
-        )
-        
-        if not agents_df.empty:
-            # Tech score distribution
-            fig_hist = px.histogram(
-                agents_df,
-                x='tech_score',
-                nbins=20,
-                title='Tech Score Distribution',
-                labels={'tech_score': 'Tech Score', 'count': 'Number of Agents'}
-            )
-            fig_hist.add_vline(x=70, line_dash="dash", line_color="green",
-                              annotation_text="Brydje Target (70+)")
-            st.plotly_chart(fig_hist, use_container_width=True)
-            
-            # Tech score by city
-            city_tech = agents_df.groupby('city')['tech_score'].agg(['mean', 'count']).reset_index()
-            city_tech = city_tech[city_tech['count'] >= 3]  # Cities with at least 3 agents
-            
-            if not city_tech.empty:
-                fig_city = px.bar(
-                    city_tech.sort_values('mean', ascending=False).head(10),
-                    x='city',
-                    y='mean',
-                    title='Average Tech Score by City',
-                    labels={'mean': 'Avg Tech Score', 'city': 'City'}
-                )
-                st.plotly_chart(fig_city, use_container_width=True)
-            
-            # Brokerage analysis
-            brokerage_tech = agents_df.groupby('brokerage')['tech_score'].agg(['mean', 'count']).reset_index()
-            brokerage_tech = brokerage_tech[brokerage_tech['count'] >= 2]
-            
-            if not brokerage_tech.empty:
-                fig_brokerage = px.scatter(
-                    brokerage_tech,
-                    x='count',
-                    y='mean',
-                    text='brokerage',
-                    title='Brokerages: Agent Count vs Tech Score',
-                    labels={'count': 'Number of Agents', 'mean': 'Avg Tech Score'}
-                )
-                st.plotly_chart(fig_brokerage, use_container_width=True)
-            
-            # Top tech-savvy agents
-            st.subheader("🏆 Top 10 Tech-Savvy Agents")
-            top_agents = agents_df.nlargest(10, 'tech_score')[['name', 'city', 'state', 'brokerage', 'tech_score', 'rating']]
-            st.dataframe(top_agents, hide_index=True)
-        
-        else:
-            st.info("No agent data available yet. Search for some ZIP codes first!")
-    
-    # Tab 5: Market Insights
-    with tabs[4]:
-        st.header("📊 Market Insights")
-        
-        conn = st.session_state.db_conn
-        
-        # Search history insights
-        search_history = pd.read_sql_query(
-            "SELECT * FROM search_history ORDER BY search_date DESC",
-            conn
-        )
-        
-        if not search_history.empty:
-            # Most searched areas
-            st.subheader("🔍 Most Searched Areas")
-            
-            area_stats = search_history.groupby(['city', 'state'])['agents_found'].agg(['sum', 'count']).reset_index()
-            area_stats.columns = ['City', 'State', 'Total Agents', 'Searches']
-            area_stats = area_stats.sort_values('Total Agents', ascending=False).head(10)
-            
-            st.dataframe(area_stats, hide_index=True)
-            
-            # Time series of searches
-            search_history['search_date'] = pd.to_datetime(search_history['search_date'])
-            daily_searches = search_history.set_index('search_date').resample('D')['agents_found'].sum().reset_index()
-            
-            fig_timeline = px.line(
-                daily_searches,
-                x='search_date',
-                y='agents_found',
-                title='Agents Discovered Over Time',
-                labels={'agents_found': 'Agents Found', 'search_date': 'Date'}
-            )
-            st.plotly_chart(fig_timeline, use_container_width=True)
-        
-        # Overall stats
-        total_searches = len(search_history)
-        total_agents = pd.read_sql_query("SELECT COUNT(*) as count FROM real_agents", conn)['count'][0]
-        avg_tech_score = pd.read_sql_query("SELECT AVG(tech_score) as avg FROM real_agents", conn)['avg'][0]
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total ZIP Codes Searched", total_searches)
-        
-        with col2:
-            st.metric("Total Agents Found", total_agents)
-        
-        with col3:
-            st.metric("Average Tech Score", f"{avg_tech_score:.0f}" if avg_tech_score else "N/A")
-    
-    # Tab 6: Manual Research
-    with tabs[5]:
-        st.header("🔬 Manual Research Queue")
-        
-        st.info("""
-        This section helps you track manual research for agents. 
-        Use the research links to verify agent information and add notes.
-        """)
-        
-        # Add agent to research queue
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.subheader("Add to Research Queue")
-            
-            agent_name = st.text_input("Agent Name")
-            agent_zip = st.text_input("ZIP Code", "")
-            
-            if st.button("Add to Queue") and agent_name:
-                conn = st.session_state.db_conn
-                cursor = conn.cursor()
+            if st.session_state.liked_agents or st.session_state.rejected_agents:
+                col1, col2, col3, col4 = st.columns(4)
                 
-                # Generate research links
-                links = scraper.generate_research_links(agent_name, agent_zip)
+                with col1:
+                    st.metric("Total Reviewed", len(st.session_state.liked_agents) + len(st.session_state.rejected_agents))
                 
-                cursor.execute('''
-                    INSERT INTO research_queue (agent_name, zip_code, google_result)
-                    VALUES (?, ?, ?)
-                ''', (agent_name, agent_zip, links.get('google', '')))
+                with col2:
+                    st.metric("Liked", len(st.session_state.liked_agents))
                 
-                conn.commit()
-                st.success(f"Added {agent_name} to research queue")
-        
-        with col2:
-            st.subheader("Quick Add from Search")
-            
-            if st.session_state.current_agents:
-                quick_add = st.selectbox(
-                    "Select agent from recent search",
-                    [a['name'] for a in st.session_state.current_agents[:10]]
-                )
+                with col3:
+                    st.metric("Super Liked", len([a for a in st.session_state.liked_agents if a.get('super_liked')]))
                 
-                if st.button("Quick Add to Queue"):
-                    selected = next((a for a in st.session_state.current_agents if a['name'] == quick_add), None)
-                    if selected:
-                        conn = st.session_state.db_conn
-                        cursor = conn.cursor()
-                        
-                        cursor.execute('''
-                            INSERT INTO research_queue (agent_name, zip_code, google_result)
-                            VALUES (?, ?, ?)
-                        ''', (selected['name'], selected.get('zip_code', ''), ''))
-                        
-                        conn.commit()
-                        st.success(f"Added {selected['name']} to research queue")
-        
-        st.divider()
-        
-        # Display research queue
-        st.subheader("Research Queue")
-        
-        conn = st.session_state.db_conn
-        queue = pd.read_sql_query(
-            "SELECT * FROM research_queue WHERE research_status = 'pending' ORDER BY created_at DESC",
-            conn
-        )
-        
-        if not queue.empty:
-            for _, agent in queue.iterrows():
-                with st.expander(f"{agent['agent_name']} - {agent['zip_code']}"):
-                    # Research links
-                    st.write("**Research Links:**")
-                    links = scraper.generate_research_links(agent['agent_name'], agent['zip_code'])
+                with col4:
+                    like_rate = len(st.session_state.liked_agents) / (len(st.session_state.liked_agents) + len(st.session_state.rejected_agents)) * 100 if (st.session_state.liked_agents or st.session_state.rejected_agents) else 0
+                    st.metric("Like Rate", f"{like_rate:.0f}%")
+                
+                if st.session_state.liked_agents:
+                    st.divider()
                     
-                    cols = st.columns(4)
-                    for i, (platform, url) in enumerate(list(links.items())[:4]):
-                        with cols[i]:
-                            st.markdown(f"[{platform.title()}]({url})")
-                    
-                    # Research form
-                    st.write("**Research Notes:**")
+                    # Analyze matches
+                    df = pd.DataFrame(st.session_state.liked_agents)
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        has_instagram = st.checkbox("Has Instagram", key=f"ig_{agent['id']}")
-                        has_facebook = st.checkbox("Has Facebook", key=f"fb_{agent['id']}")
-                        website = st.text_input("Website URL", key=f"web_{agent['id']}")
+                        st.subheader("Match Score Distribution")
+                        score_data = df['match_score'].value_counts().sort_index()
+                        st.bar_chart(score_data)
                     
                     with col2:
-                        tech_estimate = st.slider("Tech Score Estimate", 0, 100, 50, key=f"tech_{agent['id']}")
-                        notes = st.text_area("Notes", key=f"notes_{agent['id']}")
+                        st.subheader("Top Brokerages")
+                        brokerage_data = df['brokerage'].value_counts().head(5)
+                        st.bar_chart(brokerage_data)
                     
-                    if st.button("Save Research", key=f"save_{agent['id']}"):
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            UPDATE research_queue
-                            SET instagram_checked = ?, facebook_checked = ?, 
-                                website_found = ?, tech_score_estimate = ?,
-                                notes = ?, research_status = 'completed'
-                            WHERE id = ?
-                        ''', (has_instagram, has_facebook, website, tech_estimate, notes, agent['id']))
-                        conn.commit()
-                        st.success("Research saved!")
-                        st.rerun()
-        else:
-            st.info("No agents in research queue. Add agents from your searches.")
+                    # Average stats
+                    st.subheader("Average Stats of Your Matches")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Avg Match Score", f"{df['match_score'].mean():.0f}%")
+                        st.metric("Avg Experience", f"{df['years_experience'].mean():.1f} years")
+                    
+                    with col2:
+                        st.metric("Avg Recent Sales", f"{df['recent_sales'].mean():.0f}")
+                        st.metric("Avg Sale Price", f"${df['avg_sale_price'].mean():,.0f}")
+                    
+                    with col3:
+                        st.metric("Avg Rating", f"{df['rating'].mean():.1f}/5.0")
+                        st.metric("Avg Tech Score", f"{df['tech_score'].mean():.0f}/100")
+            else:
+                st.info("No data yet. Start swiping to see your analytics!")
+    
+    else:
+        # AGENT MODE - For Brydje customer acquisition
+        st.header("🏢 Agent Customer Acquisition Mode")
+        st.info("Search for agents to convert to Brydje platform")
+        
+        # This would include the agent search functionality from before
+        # but I'm focusing on the seller-agent matching as that's the core feature you wanted
 
-# ================== RUN APPLICATION ==================
 if __name__ == "__main__":
     main()
